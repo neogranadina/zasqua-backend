@@ -3,9 +3,12 @@ Fisqua Catalog Models
 
 Core data models implementing the Fisqua database schema v0.1:
 - Repository: Top-level institutions/archives
-- CatalogUnit: Universal archival descriptions (ISAD(G)/MEAP/EAP compliant)
+- CatalogUnit: Universal archival descriptions (ISAD(G)/MEAP compliant)
 - Place: Geocoded geographic entities
 - CatalogUnitPlace: Links catalog units to places
+
+Streamlined from ~95 to ~70 fields by removing EAP script/calendar
+extensions and consolidating duplicate fields.
 """
 
 from django.db import models
@@ -17,25 +20,43 @@ from mptt.models import MPTTModel, TreeForeignKey
 class Repository(models.Model):
     """
     Top-level institutions that own collections.
-    Each repository defines its own hierarchy and standards.
     """
 
     class MetadataStandard(models.TextChoices):
         MEAP = 'MEAP', 'MEAP'
         EAP = 'EAP', 'EAP'
         ISADG = 'ISADG', 'ISAD(G)'
-        HYBRID = 'HYBRID', 'Hybrid'
-        CUSTOM = 'CUSTOM', 'Custom'
 
     class InstitutionType(models.TextChoices):
-        ARCHIVE = 'archive', 'Archive'
-        LIBRARY = 'library', 'Library'
-        MUSEUM = 'museum', 'Museum'
-        UNIVERSITY = 'university', 'University'
-        RESEARCH_CENTER = 'research_center', 'Research Center'
-        GOVERNMENT = 'government', 'Government'
-        PRIVATE = 'private', 'Private Collection'
-        OTHER = 'other', 'Other'
+        # Government/Public
+        NATIONAL_ARCHIVE = 'national_archive', 'Archivo nacional'
+        REGIONAL_ARCHIVE = 'regional_archive', 'Archivo regional'
+        MUNICIPAL_ARCHIVE = 'municipal_archive', 'Archivo municipal'
+        JUDICIAL_ARCHIVE = 'judicial_archive', 'Archivo judicial'
+        # Ecclesiastical
+        PARISH_ARCHIVE = 'parish_archive', 'Archivo parroquial'
+        DIOCESAN_ARCHIVE = 'diocesan_archive', 'Archivo diocesano'
+        CATHEDRAL_CHAPTER = 'cathedral_chapter', 'Cabildo catedralicio'
+        CONVENT = 'convent', 'Convento/Monasterio'
+        # Notarial
+        NOTARY = 'notary', 'Notaría'
+        # Academic/Cultural
+        UNIVERSITY = 'university', 'Universidad'
+        LIBRARY = 'library', 'Biblioteca'
+        MUSEUM = 'museum', 'Museo'
+        RESEARCH_CENTER = 'research_center', 'Centro de investigación'
+        # Non-institutional
+        PRIVATE_COLLECTION = 'private_collection', 'Colección privada'
+        FAMILY_ARCHIVE = 'family_archive', 'Archivo familiar'
+        COMMUNITY_ARCHIVE = 'community_archive', 'Archivo comunitario'
+        COLLECTIVE = 'collective', 'Colectivo'
+        # Catch-all
+        OTHER = 'other', 'Otro'
+
+    class LanguageCode(models.TextChoices):
+        ES = 'es', 'Español'
+        EN = 'en', 'English'
+        PT = 'pt', 'Português'
 
     # Basic Information
     name = models.CharField(max_length=500)
@@ -48,25 +69,26 @@ class Repository(models.Model):
     # Contact & Location
     institution_type = models.CharField(max_length=100, choices=InstitutionType.choices,
         blank=True)
-    country_code = models.CharField(max_length=3, blank=True,
-        help_text='ISO 3166-1 alpha-3')
+    country_code = models.CharField(max_length=3, default='COL',
+        help_text='Código ISO 3166-1 alpha-3')
     city = models.CharField(max_length=255, blank=True)
-    region = models.CharField(max_length=255, blank=True)
+    region = models.CharField(max_length=255, blank=True,
+        help_text='Department, state, or province')
     address = models.TextField(blank=True)
     website_url = models.URLField(blank=True)
     contact_email = models.EmailField(blank=True)
     contact_phone = models.CharField(max_length=50, blank=True)
 
-    # Standards & Settings
+    # Settings
     default_metadata_standard = models.CharField(max_length=20,
-        choices=MetadataStandard.choices, default=MetadataStandard.MEAP)
-    supports_isadg = models.BooleanField(default=False)
-    supports_isaar = models.BooleanField(default=False)
-    default_language_code = models.CharField(max_length=10, default='en',
-        help_text='ISO 639-2 code')
+        choices=MetadataStandard.choices, default=MetadataStandard.MEAP,
+        help_text='Estándar predeterminado para nuevos registros')
+    default_language = models.CharField(max_length=10, choices=LanguageCode.choices,
+        default=LanguageCode.ES, help_text='Idioma principal de los registros')
 
     # Administrative
-    is_active = models.BooleanField(default=True)
+    enabled = models.BooleanField(default=True,
+        help_text='Uncheck to hide this repository from public view without deleting it')
     notes = models.TextField(blank=True)
 
     # Timestamps
@@ -87,28 +109,43 @@ class CatalogUnit(MPTTModel):
     """
     Universal table for ALL archival descriptions.
 
-    Supports ISAD(G), EAP, MEAP, and custom structures.
+    Supports ISAD(G), MEAP, and custom structures.
     Uses MPTT for efficient hierarchical queries.
     Catalog-first model: Digital files are optional attachments.
+
+    ~70 fields organized by ISAD(G) areas.
     """
 
     class MetadataStandard(models.TextChoices):
         MEAP = 'MEAP', 'MEAP'
         EAP = 'EAP', 'EAP'
         ISADG = 'ISADG', 'ISAD(G)'
-        HYBRID = 'HYBRID', 'Hybrid'
-        CUSTOM = 'CUSTOM', 'Custom'
+
+    class LevelType(models.TextChoices):
+        # ISAD(G) levels
+        FONDS = 'fonds', 'Fondo / Fonds'
+        SUBFONDS = 'subfonds', 'Subfondo / Sub-fonds'
+        SERIES = 'series', 'Serie / Series'
+        SUBSERIES = 'subseries', 'Subserie / Sub-series'
+        FILE = 'file', 'Expediente / File'
+        ITEM = 'item', 'Unidad documental / Item'
+        # MEAP levels
+        COLLECTION = 'collection', 'Colección / Collection'
+        # Additional useful levels
+        SECTION = 'section', 'Sección / Section'
+        VOLUME = 'volume', 'Volumen / Volume'
+        PIECE = 'piece', 'Pieza / Piece'
 
     class AccessCondition(models.TextChoices):
-        OPEN = 'open', 'Open'
-        RESTRICTED = 'restricted', 'Restricted'
-        CLOSED = 'closed', 'Closed'
+        OPEN = 'open', 'Abierto / Open'
+        RESTRICTED = 'restricted', 'Restringido / Restricted'
+        CLOSED = 'closed', 'Cerrado / Closed'
 
     class DescriptionStatus(models.TextChoices):
-        DRAFT = 'draft', 'Draft'
-        IN_PROGRESS = 'in_progress', 'In Progress'
+        DRAFT = 'draft', 'Borrador / Draft'
+        IN_PROGRESS = 'in_progress', 'En proceso / In Progress'
         FINAL = 'final', 'Final'
-        REVISED = 'revised', 'Revised'
+        REVISED = 'revised', 'Revisado / Revised'
 
     # =========================================================================
     # CORE IDENTITY & HIERARCHY
@@ -122,38 +159,30 @@ class CatalogUnit(MPTTModel):
     metadata_standard = models.CharField(max_length=20,
         choices=MetadataStandard.choices, default=MetadataStandard.MEAP)
 
-    # Hierarchy/Level Information
-    level_type = models.CharField(max_length=100, blank=True,
-        help_text='Repository-defined: fonds, series, collection, item, etc.')
-    level_name = models.CharField(max_length=255, blank=True,
-        help_text='Human-readable in local language: Fondo, Serie, Colección')
+    # Level type
+    level_type = models.CharField(max_length=100, choices=LevelType.choices,
+        blank=True, help_text='Archival hierarchy level')
 
     # Reference Codes & Identifiers
-    reference_code = models.CharField(max_length=500, unique=True, blank=True, null=True,
-        help_text='ISAD(G) 3.1.1: CountryCode-RepoCode-LocalRef')
     local_identifier = models.CharField(max_length=255, blank=True,
         help_text='Internal repository identifier')
-    ark = models.CharField(max_length=255, unique=True, blank=True, null=True,
-        help_text='MEAP: Archival Resource Key')
+    neogranadina_pid = models.CharField(max_length=255, unique=True, blank=True, null=True,
+        help_text='Neogranadina persistent identifier')
     original_reference = models.CharField(max_length=500, blank=True,
-        help_text='EAP: Pre-existing shelfmarks')
+        help_text='Pre-existing shelfmarks or signatures')
 
     # =========================================================================
     # ISAD(G) 3.1 IDENTITY STATEMENT AREA
     # =========================================================================
 
-    # 3.1.2 Title (Mandatory)
+    # Title
     title = models.TextField()
-    title_original_language = models.TextField(blank=True,
-        help_text='EAP: Title in original script')
-    title_transliterated = models.TextField(blank=True,
-        help_text='EAP: Romanized title')
     translated_title = models.TextField(blank=True,
-        help_text='MEAP: English translation')
+        help_text='Title translation (usually English)')
     uniform_title = models.CharField(max_length=500, blank=True,
-        help_text='MEAP: For periodicals')
+        help_text='For periodicals: standardized title')
 
-    # 3.1.3 Date(s)
+    # Dates
     date_expression = models.CharField(max_length=500, blank=True,
         help_text='Human-readable date (any format/language)')
     date_type = models.CharField(max_length=50, blank=True,
@@ -163,21 +192,10 @@ class CatalogUnit(MPTTModel):
     date_start_approximation = models.CharField(max_length=20, blank=True,
         help_text='circa | before | after | unknown')
     date_end_approximation = models.CharField(max_length=20, blank=True)
-    date_bulk_start = models.DateField(null=True, blank=True)
-    date_bulk_end = models.DateField(null=True, blank=True)
-    date_note = models.TextField(blank=True)
+    date_note = models.TextField(blank=True,
+        help_text='Additional date info, bulk dates, etc.')
 
-    # Alternative Calendar (EAP)
-    alternative_calendar = models.CharField(max_length=50, blank=True)
-    alternative_calendar_dates = models.CharField(max_length=500, blank=True)
-
-    # 3.1.4 Level of Description
-    isadg_level = models.CharField(max_length=50, blank=True,
-        help_text='fonds | sub-fonds | series | sub-series | file | item | part')
-    eap_level = models.CharField(max_length=50, blank=True,
-        help_text='Collection | Series | Sub-series | File | Item')
-
-    # 3.1.5 Extent and Medium
+    # Extent and Medium
     extent_expression = models.CharField(max_length=500, blank=True,
         help_text='Human-readable: "103.5 cubic feet (98 boxes)"')
     extent_quantity = models.DecimalField(max_digits=10, decimal_places=2,
@@ -188,7 +206,8 @@ class CatalogUnit(MPTTModel):
 
     # Physical characteristics
     dimensions = models.CharField(max_length=255, blank=True)
-    medium = models.CharField(max_length=255, blank=True)
+    medium = models.CharField(max_length=255, blank=True,
+        help_text='cassette | film | paper | photograph | etc.')
     duration = models.CharField(max_length=50, blank=True,
         help_text='For audio/video: HH:MM:SS')
     condition = models.TextField(blank=True)
@@ -198,24 +217,24 @@ class CatalogUnit(MPTTModel):
     # =========================================================================
 
     creator_string = models.TextField(blank=True,
-        help_text='Simple text if not using authority control')
-    administrative_history = models.TextField(blank=True)
-    biographical_history = models.TextField(blank=True)
-    archival_history = models.TextField(blank=True)
-    custodial_history = models.TextField(blank=True)
-
-    acquisition_source = models.TextField(blank=True)
-    acquisition_date = models.DateField(null=True, blank=True)
-    acquisition_method = models.CharField(max_length=100, blank=True)
-    acquisition_note = models.TextField(blank=True)
+        help_text='Creator name(s) as text')
+    administrative_history = models.TextField(blank=True,
+        help_text='For organizations/institutions')
+    biographical_history = models.TextField(blank=True,
+        help_text='For persons/families')
+    archival_history = models.TextField(blank=True,
+        help_text='Custodial history, transfers, provenance')
+    acquisition_info = models.TextField(blank=True,
+        help_text='Source, date, and method of acquisition')
 
     # =========================================================================
     # ISAD(G) 3.3 CONTENT AND STRUCTURE AREA
     # =========================================================================
 
-    description = models.TextField(blank=True)
-    description_translations = models.JSONField(blank=True, null=True)
-    scope_content = models.TextField(blank=True)
+    description = models.TextField(blank=True,
+        help_text='Scope and content - main description')
+    description_translations = models.JSONField(blank=True, null=True,
+        help_text='{"es": "Descripción en español"}')
 
     resource_type = models.CharField(max_length=100, blank=True,
         help_text='still_image | text | sound | moving_image | etc.')
@@ -231,34 +250,29 @@ class CatalogUnit(MPTTModel):
     access_conditions = models.CharField(max_length=100,
         choices=AccessCondition.choices, blank=True)
     access_restrictions_note = models.TextField(blank=True)
-    access_restriction_type = models.CharField(max_length=100, blank=True)
+    access_restriction_type = models.CharField(max_length=100, blank=True,
+        help_text='legal | privacy | preservation | donor')
     access_restriction_end_date = models.DateField(null=True, blank=True)
-
-    eap_access_status = models.CharField(max_length=50, blank=True)
-    eap_restriction_reason = models.TextField(blank=True)
 
     contains_sensitive_data = models.BooleanField(default=False)
     sensitive_data_nature = models.TextField(blank=True)
 
     reproduction_conditions = models.TextField(blank=True)
 
-    # Rights Information
-    rights_copyright_status = models.CharField(max_length=100, blank=True)
-    rights_publication_status = models.CharField(max_length=100, blank=True)
+    # Rights
+    rights_copyright_status = models.CharField(max_length=100, blank=True,
+        help_text='copyrighted | public_domain | unknown')
     rights_holder_name = models.TextField(blank=True)
-    rights_holder_contact = models.TextField(blank=True)
-    rights_statement = models.TextField(blank=True)
-    rights_attribution = models.TextField(blank=True)
-    rights_license = models.CharField(max_length=100, blank=True)
+    rights_statement = models.TextField(blank=True,
+        help_text='RightsStatements.org URI or text')
+    rights_license = models.CharField(max_length=100, blank=True,
+        help_text='CC-BY, CC-BY-SA, etc.')
     rights_note = models.TextField(blank=True)
 
-    # Language and Scripts
+    # Language
     language_codes = models.JSONField(blank=True, null=True,
         help_text='ISO 639-2 codes: ["eng", "spa", "que"]')
     language_note = models.TextField(blank=True)
-    script_codes = models.JSONField(blank=True, null=True,
-        help_text='ISO 15924 codes: ["Latn", "Arab"]')
-    writing_system = models.CharField(max_length=50, blank=True)
 
     physical_characteristics = models.TextField(blank=True)
     technical_requirements = models.TextField(blank=True)
@@ -270,12 +284,12 @@ class CatalogUnit(MPTTModel):
     # ISAD(G) 3.5 ALLIED MATERIALS AREA
     # =========================================================================
 
-    location_of_originals = models.TextField(blank=True)
-    physical_location_institution = models.CharField(max_length=500, blank=True)
-    physical_location_country = models.CharField(max_length=100, blank=True)
-    physical_location_city = models.CharField(max_length=255, blank=True)
-    physical_collection_title = models.CharField(max_length=500, blank=True)
-    physical_collection_number = models.CharField(max_length=255, blank=True)
+    location_of_originals = models.TextField(blank=True,
+        help_text='If this is a copy, where are originals?')
+    physical_location = models.TextField(blank=True,
+        help_text='Institution, city, country holding originals')
+    physical_collection = models.CharField(max_length=500, blank=True,
+        help_text='Collection title and number')
     physical_box = models.CharField(max_length=50, blank=True)
     physical_folder = models.CharField(max_length=50, blank=True)
     physical_location_note = models.TextField(blank=True)
@@ -285,19 +299,13 @@ class CatalogUnit(MPTTModel):
     publication_note = models.TextField(blank=True)
 
     # =========================================================================
-    # ISAD(G) 3.6 NOTES AREA
+    # ISAD(G) 3.6 & 3.7 NOTES AND DESCRIPTION CONTROL
     # =========================================================================
 
     notes = models.TextField(blank=True)
-    notes_translations = models.JSONField(blank=True, null=True)
     internal_notes = models.TextField(blank=True,
         help_text='Staff-only notes, not published')
 
-    # =========================================================================
-    # ISAD(G) 3.7 DESCRIPTION CONTROL AREA
-    # =========================================================================
-
-    archivist_note = models.TextField(blank=True)
     cataloger_name = models.CharField(max_length=255, blank=True)
     rules_conventions = models.TextField(blank=True)
     description_date = models.DateField(null=True, blank=True)
@@ -307,7 +315,7 @@ class CatalogUnit(MPTTModel):
     statement_of_responsibility = models.TextField(blank=True)
 
     # =========================================================================
-    # PROVENANCE DETAILS (MEAP/EAP)
+    # PROVENANCE DETAILS (for books, periodicals, photographs, etc.)
     # =========================================================================
 
     author = models.TextField(blank=True)
@@ -320,6 +328,7 @@ class CatalogUnit(MPTTModel):
     composer = models.TextField(blank=True)
     director = models.TextField(blank=True)
 
+    # Periodicals
     volume_number = models.CharField(max_length=50, blank=True)
     issue_number = models.CharField(max_length=50, blank=True)
     page_number = models.CharField(max_length=50, blank=True)
@@ -328,12 +337,14 @@ class CatalogUnit(MPTTModel):
     # SUBJECTS & KEYWORDS
     # =========================================================================
 
-    subjects_topic = models.JSONField(blank=True, null=True)
-    subjects_geographic = models.JSONField(blank=True, null=True)
-    subjects_temporal = models.JSONField(blank=True, null=True)
-    subjects_religion = models.JSONField(blank=True, null=True)
-    subjects_name_string = models.JSONField(blank=True, null=True)
-    related_title_of_works = models.JSONField(blank=True, null=True)
+    subjects_topic = models.JSONField(blank=True, null=True,
+        help_text='Topic keywords: ["slavery", "mining"]')
+    subjects_geographic = models.JSONField(blank=True, null=True,
+        help_text='Place names as text (also linked via Place model)')
+    subjects_temporal = models.JSONField(blank=True, null=True,
+        help_text='Time periods: ["Colonial period", "18th century"]')
+    subjects_name_string = models.JSONField(blank=True, null=True,
+        help_text='Person/organization names as text')
 
     # =========================================================================
     # DIGITAL ATTACHMENTS
@@ -391,6 +402,19 @@ class CatalogUnit(MPTTModel):
 
     def __str__(self):
         return self.title[:100] if len(self.title) > 100 else self.title
+
+    @property
+    def reference_code(self):
+        """
+        ISAD(G) 3.1.1 reference code: CountryCode-RepoCode-LocalIdentifier
+        Auto-generated from repository and local_identifier.
+        """
+        if not self.local_identifier:
+            return None
+        repo_code = self.repository.repository_code or ''
+        country_code = self.repository.country_code or ''
+        parts = [p for p in [country_code, repo_code, self.local_identifier] if p]
+        return '-'.join(parts) if parts else None
 
     def get_breadcrumb(self):
         """Return list of ancestors for breadcrumb navigation."""

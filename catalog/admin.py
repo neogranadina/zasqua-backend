@@ -1,13 +1,38 @@
 """
 Fisqua Catalog Admin Configuration
 
-Admin interfaces for Repository, CatalogUnit, Place, and CatalogUnitPlace models.
+Admin interfaces with intelligent tiered field display:
+- ~20 essential fields visible by default
+- Everything else in collapsed sections organized by ISAD(G) area
+- Designed not to overwhelm catalogers
 """
 
+from django import forms
 from django.contrib import admin
 from mptt.admin import MPTTModelAdmin
 
 from .models import Repository, CatalogUnit, Place, CatalogUnitPlace
+from .countries import COUNTRY_CHOICES
+from .departments import COLOMBIA_DEPARTMENTS
+
+
+class RepositoryAdminForm(forms.ModelForm):
+    """Custom form with country dropdown and conditional department field."""
+    country_code = forms.ChoiceField(
+        choices=[('', '---------')] + COUNTRY_CHOICES,
+        required=False,
+        initial='COL',
+    )
+
+    class Meta:
+        model = Repository
+        fields = '__all__'
+        widgets = {
+            'region': forms.TextInput(attrs={'class': 'region-text'}),
+        }
+
+    class Media:
+        js = ('admin/js/country_region.js',)
 
 
 class CatalogUnitPlaceInline(admin.TabularInline):
@@ -19,10 +44,10 @@ class CatalogUnitPlaceInline(admin.TabularInline):
 
 @admin.register(Repository)
 class RepositoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'abbreviation', 'repository_code', 'country_code',
-                    'city', 'default_metadata_standard', 'is_active']
-    list_filter = ['is_active', 'default_metadata_standard', 'institution_type',
-                   'country_code']
+    form = RepositoryAdminForm
+    list_display = ['name', 'abbreviation', 'institution_type', 'city',
+                    'country_code', 'enabled']
+    list_filter = ['enabled', 'institution_type', 'country_code']
     search_fields = ['name', 'abbreviation', 'repository_code', 'city']
     ordering = ['name']
 
@@ -30,133 +55,218 @@ class RepositoryAdmin(admin.ModelAdmin):
         ('Basic Information', {
             'fields': ('name', 'name_translations', 'abbreviation', 'repository_code')
         }),
-        ('Contact & Location', {
+        ('Location & Contact', {
             'fields': ('institution_type', 'country_code', 'region', 'city',
                        'address', 'website_url', 'contact_email', 'contact_phone')
         }),
-        ('Standards & Settings', {
-            'fields': ('default_metadata_standard', 'supports_isadg',
-                       'supports_isaar', 'default_language_code')
+        ('Settings', {
+            'fields': ('default_metadata_standard', 'default_language')
         }),
         ('Administrative', {
-            'fields': ('is_active', 'notes')
+            'fields': ('enabled', 'notes')
         }),
     )
 
 
 @admin.register(CatalogUnit)
 class CatalogUnitAdmin(MPTTModelAdmin):
+    """
+    Tiered admin interface for CatalogUnit.
+
+    Design principles:
+    - ~20 most common fields visible by default
+    - Collapsed sections for specialized fields
+    - Organized by ISAD(G) areas
+    """
+
     list_display = ['title_short', 'reference_code', 'repository', 'level_type',
                     'date_expression', 'is_published']
     list_filter = ['repository', 'metadata_standard', 'level_type', 'is_published',
-                   'access_conditions']
-    search_fields = ['title', 'reference_code', 'local_identifier', 'description',
-                     'scope_content']
+                   'access_conditions', 'resource_type', 'has_digital_files']
+    search_fields = ['title', 'local_identifier', 'description', 'creator_string']
     autocomplete_fields = ['repository', 'parent', 'created_by', 'updated_by']
+    readonly_fields = ['reference_code']
     ordering = ['tree_id', 'lft']
     date_hierarchy = 'date_start'
 
     inlines = [CatalogUnitPlaceInline]
 
     fieldsets = (
-        ('Identity & Hierarchy', {
-            'fields': ('repository', 'parent', 'metadata_standard',
-                       'level_type', 'level_name', 'reference_code',
-                       'local_identifier', 'ark', 'original_reference')
+        # =====================================================================
+        # ESSENTIAL FIELDS (~20) - Always visible
+        # =====================================================================
+        ('Essential Information', {
+            'description': 'Core fields for every catalog record',
+            'fields': (
+                'repository',
+                'parent',
+                'level_type',
+                'local_identifier',
+                'reference_code',
+                'title',
+                'translated_title',
+                ('date_expression', 'date_start', 'date_end'),
+                'extent_expression',
+                'creator_string',
+                'description',
+                'language_codes',
+                ('access_conditions', 'resource_type'),
+                ('is_published', 'has_digital_files'),
+            )
         }),
-        ('Title', {
-            'fields': ('title', 'title_original_language', 'title_transliterated',
-                       'translated_title', 'uniform_title')
+
+        # =====================================================================
+        # COLLAPSED SECTIONS - Organized by ISAD(G) area
+        # =====================================================================
+
+        # ISAD(G) 3.1 Identity Statement Area (additional fields)
+        ('Identity Details', {
+            'classes': ('collapse',),
+            'description': 'ISAD(G) 3.1 - Additional identity fields',
+            'fields': (
+                'metadata_standard',
+                ('neogranadina_pid', 'original_reference'),
+                'uniform_title',
+                ('date_type', 'date_note'),
+                ('date_start_approximation', 'date_end_approximation'),
+                ('extent_quantity', 'extent_unit'),
+                'extent_note',
+                ('dimensions', 'medium'),
+                ('duration', 'condition'),
+            )
         }),
-        ('Dates', {
-            'fields': ('date_expression', 'date_type', 'date_start', 'date_end',
-                       'date_start_approximation', 'date_end_approximation',
-                       'date_bulk_start', 'date_bulk_end', 'date_note',
-                       'alternative_calendar', 'alternative_calendar_dates'),
-            'classes': ('collapse',)
-        }),
-        ('Level & Extent', {
-            'fields': ('isadg_level', 'eap_level', 'extent_expression',
-                       'extent_quantity', 'extent_unit', 'extent_note',
-                       'dimensions', 'medium', 'duration', 'condition'),
-            'classes': ('collapse',)
-        }),
+
+        # ISAD(G) 3.2 Context Area
         ('Context', {
-            'fields': ('creator_string', 'administrative_history',
-                       'biographical_history', 'archival_history',
-                       'custodial_history', 'acquisition_source',
-                       'acquisition_date', 'acquisition_method', 'acquisition_note'),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
+            'description': 'ISAD(G) 3.2 - Provenance and history',
+            'fields': (
+                'administrative_history',
+                'biographical_history',
+                'archival_history',
+                'acquisition_info',
+            )
         }),
+
+        # ISAD(G) 3.3 Content and Structure Area
         ('Content & Structure', {
-            'fields': ('description', 'description_translations', 'scope_content',
-                       'resource_type', 'appraisal_destruction', 'accruals',
-                       'system_of_arrangement')
+            'classes': ('collapse',),
+            'description': 'ISAD(G) 3.3 - Additional content description',
+            'fields': (
+                'description_translations',
+                'appraisal_destruction',
+                'accruals',
+                'system_of_arrangement',
+            )
         }),
+
+        # ISAD(G) 3.4 Access and Use Area
         ('Access & Rights', {
-            'fields': ('access_conditions', 'access_restrictions_note',
-                       'access_restriction_type', 'access_restriction_end_date',
-                       'eap_access_status', 'eap_restriction_reason',
-                       'contains_sensitive_data', 'sensitive_data_nature',
-                       'reproduction_conditions', 'rights_copyright_status',
-                       'rights_publication_status', 'rights_holder_name',
-                       'rights_statement', 'rights_license', 'rights_note'),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
+            'description': 'ISAD(G) 3.4 - Conditions of access and use',
+            'fields': (
+                'access_restrictions_note',
+                ('access_restriction_type', 'access_restriction_end_date'),
+                ('contains_sensitive_data', 'sensitive_data_nature'),
+                'reproduction_conditions',
+                ('rights_copyright_status', 'rights_holder_name'),
+                'rights_statement',
+                ('rights_license', 'rights_note'),
+                'language_note',
+                'physical_characteristics',
+                'technical_requirements',
+                ('finding_aids', 'finding_aid_url'),
+            )
         }),
-        ('Language & Scripts', {
-            'fields': ('language_codes', 'language_note', 'script_codes',
-                       'writing_system'),
-            'classes': ('collapse',)
+
+        # ISAD(G) 3.5 Allied Materials Area
+        ('Allied Materials & Physical Location', {
+            'classes': ('collapse',),
+            'description': 'ISAD(G) 3.5 - Related materials',
+            'fields': (
+                'location_of_originals',
+                'physical_location',
+                'physical_collection',
+                ('physical_box', 'physical_folder'),
+                'physical_location_note',
+                'location_of_copies',
+                'related_units',
+                'publication_note',
+            )
         }),
-        ('Physical & Finding Aids', {
-            'fields': ('physical_characteristics', 'technical_requirements',
-                       'finding_aids', 'finding_aid_url'),
-            'classes': ('collapse',)
+
+        # ISAD(G) 3.6 & 3.7 Notes and Description Control
+        ('Notes & Description Control', {
+            'classes': ('collapse',),
+            'description': 'ISAD(G) 3.6/3.7 - Notes and cataloging info',
+            'fields': (
+                'notes',
+                'internal_notes',
+                ('cataloger_name', 'description_status'),
+                'rules_conventions',
+                ('description_date', 'description_revision_date'),
+                'statement_of_responsibility',
+            )
         }),
-        ('Allied Materials', {
-            'fields': ('location_of_originals', 'physical_location_institution',
-                       'physical_location_country', 'physical_location_city',
-                       'physical_collection_title', 'physical_collection_number',
-                       'physical_box', 'physical_folder', 'physical_location_note',
-                       'location_of_copies', 'related_units', 'publication_note'),
-            'classes': ('collapse',)
-        }),
-        ('Notes', {
-            'fields': ('notes', 'notes_translations', 'internal_notes')
-        }),
-        ('Description Control', {
-            'fields': ('archivist_note', 'cataloger_name', 'rules_conventions',
-                       'description_date', 'description_revision_date',
-                       'description_status', 'statement_of_responsibility'),
-            'classes': ('collapse',)
-        }),
+
+        # Provenance Details (for books, periodicals, photos)
         ('Provenance Details', {
-            'fields': ('author', 'scribe', 'publisher', 'publisher_location',
-                       'editor', 'photographer', 'artist', 'composer', 'director',
-                       'volume_number', 'issue_number', 'page_number'),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
+            'description': 'For books, periodicals, photographs, and AV materials',
+            'fields': (
+                ('author', 'editor'),
+                'scribe',
+                ('publisher', 'publisher_location'),
+                ('photographer', 'artist'),
+                ('composer', 'director'),
+                ('volume_number', 'issue_number', 'page_number'),
+            )
         }),
+
+        # Subjects & Keywords
         ('Subjects & Keywords', {
-            'fields': ('subjects_topic', 'subjects_geographic', 'subjects_temporal',
-                       'subjects_religion', 'subjects_name_string',
-                       'related_title_of_works'),
-            'classes': ('collapse',)
+            'classes': ('collapse',),
+            'description': 'Subject access points',
+            'fields': (
+                'subjects_topic',
+                'subjects_geographic',
+                'subjects_temporal',
+                'subjects_name_string',
+            )
         }),
-        ('Digital', {
-            'fields': ('external_url', 'external_url_label', 'iiif_manifest_url',
-                       'iiif_manifest_version', 'digital_folder_name',
-                       'digital_file_count', 'digital_file_format',
-                       'digitization_date', 'digitization_notes',
-                       'has_digital_files', 'has_external_link'),
-            'classes': ('collapse',)
+
+        # Digital
+        ('Digital Files & Links', {
+            'classes': ('collapse',),
+            'description': 'Digital attachments and IIIF',
+            'fields': (
+                ('external_url', 'external_url_label'),
+                ('iiif_manifest_url', 'iiif_manifest_version'),
+                ('digital_folder_name', 'digital_file_count'),
+                ('digital_file_format', 'digitization_date'),
+                'digitization_notes',
+                'has_external_link',
+            )
         }),
-        ('Display & Publication', {
-            'fields': ('sequence_number', 'sort_key', 'descendant_count',
-                       'is_published', 'publication_date', 'featured')
+
+        # Display & Sorting
+        ('Display & Sorting', {
+            'classes': ('collapse',),
+            'description': 'Control display order and visibility',
+            'fields': (
+                ('sequence_number', 'sort_key'),
+                'descendant_count',
+                ('publication_date', 'featured'),
+            )
         }),
-        ('Metadata', {
-            'fields': ('created_by', 'updated_by'),
-            'classes': ('collapse',)
+
+        # Metadata (who created/updated)
+        ('Record Metadata', {
+            'classes': ('collapse',),
+            'description': 'Record creation and modification info',
+            'fields': (
+                ('created_by', 'updated_by'),
+            )
         }),
     )
 
