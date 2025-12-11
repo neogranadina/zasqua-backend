@@ -32,12 +32,22 @@ CA_DB_CONFIG = {
 }
 
 # Repository mappings from CA collection IDs
+# Codes normalized to: {country}-{repo} format, lowercase
 REPOSITORY_MAP = {
-    712: {'code': 'CIHJML', 'name': 'Centro de Investigaciones Historicas Jose Maria Arboleda Llorente', 'city': 'Popayan', 'country_code': 'COL'},
-    360: {'code': 'PE-BN', 'name': 'Biblioteca Nacional del Peru', 'city': 'Lima', 'country_code': 'PER'},
-    14805: {'code': 'AHRB', 'name': 'Archivo Historico Regional de Boyaca', 'city': 'Tunja', 'country_code': 'COL'},
-    14940: {'code': 'CO.AHR', 'name': 'Archivo Historico de Rionegro', 'city': 'Rionegro', 'country_code': 'COL'},
-    16479: {'code': 'AHJCI', 'name': 'Archivo Historico del Juzgado del Circuito de Istmina', 'city': 'Istmina', 'country_code': 'COL'},
+    712: {'code': 'co-cihjml', 'name': 'Centro de Investigaciones Históricas José María Arboleda Llorente, Universidad del Cauca', 'city': 'Popayán', 'country_code': 'COL'},
+    360: {'code': 'pe-bn', 'name': 'Biblioteca Nacional del Perú', 'city': 'Lima', 'country_code': 'PER'},
+    14805: {'code': 'co-ahrb', 'name': 'Archivo Histórico Regional de Boyacá', 'city': 'Tunja', 'country_code': 'COL'},
+    14940: {'code': 'co-ahr', 'name': 'Archivo Histórico de Rionegro', 'city': 'Rionegro', 'country_code': 'COL'},
+    16479: {'code': 'co-ahjci', 'name': 'Archivo Histórico del Juzgado de Istmina', 'city': 'Istmina', 'country_code': 'COL'},
+}
+
+# Old code -> new code mapping (for migrations)
+REPO_CODE_MIGRATION = {
+    'CIHJML': 'co-cihjml',
+    'PE-BN': 'pe-bn',
+    'AHRB': 'co-ahrb',
+    'CO.AHR': 'co-ahr',
+    'AHJCI': 'co-ahjci',
 }
 
 # CA collection type to Zasqua level mapping
@@ -376,7 +386,7 @@ class Command(BaseCommand):
 
         created_count = 0
         batch = []
-        batch_size = 1000
+        batch_size = 100  # Smaller batch for SQLite
 
         for ent in entities:
             ca_id = ent['entity_id']
@@ -646,16 +656,25 @@ class Command(BaseCommand):
 
     def import_denormalize(self):
         """Phase 8: Compute denormalized fields."""
+        import time
+        import sys
+
         self.stdout.write("Computing denormalized fields...")
 
         if self.dry_run:
             self.stdout.write("  Would update creator_display and place_display for all descriptions")
             return
 
+        total_count = Description.objects.count()
+        self.stdout.write(f"  Total descriptions to process: {total_count}")
+
         # Update creator_display
         self.stdout.write("  Updating creator_display...")
         updated = 0
-        for desc in Description.objects.prefetch_related('entity_links__entity').iterator():
+        processed = 0
+        start_time = time.time()
+        for desc in Description.objects.prefetch_related('entity_links__entity').iterator(chunk_size=1000):
+            processed += 1
             creators = desc.entity_links.filter(
                 role__in=['creator', 'author']
             ).select_related('entity')[:3]
@@ -668,12 +687,21 @@ class Command(BaseCommand):
                 desc.save(update_fields=['creator_display'])
                 updated += 1
 
+            if processed % 10000 == 0:
+                elapsed = time.time() - start_time
+                rate = processed / elapsed if elapsed > 0 else 0
+                self.stdout.write(f"    Progress: {processed}/{total_count} ({rate:.0f}/sec)")
+                sys.stdout.flush()
+
         self.stdout.write(f"    Updated {updated} descriptions with creator_display")
 
         # Update place_display
         self.stdout.write("  Updating place_display...")
         updated = 0
-        for desc in Description.objects.prefetch_related('place_links__place').iterator():
+        processed = 0
+        start_time = time.time()
+        for desc in Description.objects.prefetch_related('place_links__place').iterator(chunk_size=1000):
+            processed += 1
             places = desc.place_links.select_related('place')[:3]
 
             if places:
@@ -682,18 +710,78 @@ class Command(BaseCommand):
                 desc.save(update_fields=['place_display'])
                 updated += 1
 
+            if processed % 10000 == 0:
+                elapsed = time.time() - start_time
+                rate = processed / elapsed if elapsed > 0 else 0
+                self.stdout.write(f"    Progress: {processed}/{total_count} ({rate:.0f}/sec)")
+                sys.stdout.flush()
+
         self.stdout.write(f"    Updated {updated} descriptions with place_display")
 
-        # Update path_cache
+        # Update path_cache (optimized: in-memory parent chain + bulk_update)
         self.stdout.write("  Updating path_cache...")
-        updated = 0
-        for desc in Description.objects.all().iterator():
-            ancestors = desc.get_ancestors(include_self=True)
-            path = '/'.join([str(a.id) for a in ancestors])
-            desc.path_cache = f"/{path}/"
-            desc.save(update_fields=['path_cache'])
-            updated += 1
+        start_time = time.time()
 
-        self.stdout.write(f"    Updated {updated} descriptions with path_cache")
+        # Step 1: Load all (id, parent_id) into memory - single query
+        self.stdout.write("    Loading parent mappings...")
+        parent_map = dict(Description.objects.values_list('id', 'parent_id'))
+        self.stdout.write(f"    Loaded {len(parent_map)} mappings in {time.time() - start_time:.1f}s")
+
+        # Step 2: Build path for each ID by walking parent chain
+        def build_path(desc_id):
+            path_ids = [desc_id]
+            current = desc_id
+            while parent_map.get(current):
+                current = parent_map[current]
+                path_ids.insert(0, current)
+            return '/' + '/'.join(str(x) for x in path_ids) + '/'
+
+        # Step 3: Update in batches using bulk_update
+        self.stdout.write("    Computing and saving paths...")
+        batch = []
+        updated = 0
+        truncated = 0
+        max_path_len = 0
+        max_depth = 0
+        batch_size = 1000
+
+        for desc in Description.objects.only('id', 'path_cache').iterator():
+            full_path = build_path(desc.id)
+            path_len = len(full_path)
+            depth = full_path.count('/') - 1
+
+            if path_len > max_path_len:
+                max_path_len = path_len
+                max_depth = depth
+
+            if path_len > 500:
+                self.stdout.write(self.style.WARNING(
+                    f"    TRUNCATE: ID {desc.id}, {path_len} chars, depth {depth}"
+                ))
+                full_path = full_path[:500]
+                truncated += 1
+
+            desc.path_cache = full_path
+            batch.append(desc)
+
+            if len(batch) >= batch_size:
+                Description.objects.bulk_update(batch, ['path_cache'])
+                updated += len(batch)
+                elapsed = time.time() - start_time
+                rate = updated / elapsed if elapsed > 0 else 0
+                self.stdout.write(f"    Progress: {updated}/{total_count} ({rate:.0f}/sec)")
+                sys.stdout.flush()
+                batch = []
+
+        # Final batch
+        if batch:
+            Description.objects.bulk_update(batch, ['path_cache'])
+            updated += len(batch)
+
+        elapsed = time.time() - start_time
+        self.stdout.write(f"    Updated {updated} descriptions with path_cache in {elapsed:.1f}s")
+        self.stdout.write(f"    Max path: {max_path_len} chars (depth {max_depth})")
+        if truncated:
+            self.stdout.write(self.style.WARNING(f"    {truncated} paths were truncated"))
 
         self.stdout.write(self.style.SUCCESS("Denormalization complete"))
