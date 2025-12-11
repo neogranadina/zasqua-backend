@@ -76,28 +76,37 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 # Uses SQLite for local development, PostgreSQL for production (via DATABASE_URL)
 
-DATABASE_URL = os.getenv('DATABASE_URL')
+# Database configuration
+# Supports: MySQL (development with CA data), PostgreSQL (production), SQLite (testing)
+DB_ENGINE = os.getenv('DB_ENGINE', 'mysql')
 
-if DATABASE_URL:
-    # PostgreSQL configuration from DATABASE_URL
-    # Format: postgresql://user:password@host:port/dbname
-    import re
-    match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
-    if match:
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': match.group(5),
-                'USER': match.group(1),
-                'PASSWORD': match.group(2),
-                'HOST': match.group(3),
-                'PORT': match.group(4),
-            }
+if DB_ENGINE == 'mysql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': os.getenv('DB_NAME', 'zasqua'),
+            'USER': os.getenv('DB_USER', 'root'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '3306'),
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            },
         }
-    else:
-        raise ValueError("Invalid DATABASE_URL format")
+    }
+elif DB_ENGINE == 'postgresql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'zasqua'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+        }
+    }
 else:
-    # SQLite for local development
+    # SQLite for testing
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',

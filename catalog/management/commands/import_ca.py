@@ -14,12 +14,281 @@ Usage:
 """
 
 import mysql.connector
+import re
+from datetime import date
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from catalog.models import (
     Repository, Description, Entity, Place,
     DescriptionEntity, DescriptionPlace
 )
+
+
+def parse_date_expression(date_str):
+    """
+    Parse CA date expression into structured date fields.
+
+    Returns dict with: date_start, date_end, date_certainty
+
+    Handles formats:
+    - Year only: "1875" -> start=1875-01-01, end=1875-12-31
+    - Year-month: "1875-03" -> start=1875-03-01, end=1875-03-31
+    - ISO date: "1824-10-16" -> start=end=1824-10-16
+    - European date: "13-02-1815" (DD-MM-YYYY) -> 1815-02-13
+    - Spanish text: "29 Marzo 1815" -> 1815-03-29
+    - Date range: "1825-01-01 .. 1825-12-31" -> start, end
+    - Mixed range: "1830-05-14 .. 1831-12" -> start=1830-05-14, end=1831-12-31
+    - Year range: "1864 - 1930" -> start=1864-01-01, end=1930-12-31
+    - End only: "- 1878-12-01" or "- 1878-03" -> duplicate as start
+    - Start only: ".. 1823-04-06" -> duplicate as end
+    - Uncertain: "189?" or "ca. 1750" -> left unparsed
+    """
+    if not date_str or not date_str.strip():
+        return None
+
+    date_str = date_str.strip()
+
+    # Remove leading punctuation (e.g., ",1824-01-02")
+    date_str = date_str.lstrip(',;. ')
+
+    result = {
+        'date_start': None,
+        'date_end': None,
+        'date_certainty': '',
+    }
+
+    # Skip invalid dates (like "152")
+    if len(date_str) < 4:
+        return None
+
+    # Skip uncertain dates - leave for manual review
+    if '?' in date_str or 'ca.' in date_str.lower() or 'circa' in date_str.lower() or ' ca ' in date_str.lower():
+        return None
+
+    # Try Spanish text date range first: "7 Diciembre 1780 - 29 Junio 1781"
+    spanish_range = _parse_spanish_date_range(date_str)
+    if spanish_range:
+        return spanish_range
+
+    # Try single Spanish text date: "29 Marzo 1815"
+    spanish_single = _parse_spanish_date(date_str)
+    if spanish_single:
+        result['date_start'] = spanish_single
+        result['date_end'] = spanish_single
+        return result
+
+    # Try European date range: "01-02-1820 .. 29-02-1820" or mixed "1815-05-07 .. 26-08-1815"
+    euro_range = _parse_european_date_range(date_str)
+    if euro_range:
+        return euro_range
+
+    # Try single European date: "13-02-1815" (DD-MM-YYYY)
+    euro_single = _parse_european_date(date_str)
+    if euro_single:
+        result['date_start'] = euro_single
+        result['date_end'] = euro_single
+        return result
+
+    # Pattern for partial dates: YYYY, YYYY-MM, or YYYY-MM-DD
+    date_pattern = r'\d{4}(?:-\d{2})?(?:-\d{2})?'
+
+    # Try date range patterns (with .. or -)
+    # Handles: "1825-01-01 .. 1825-12-31", "1864 - 1930", "1830-05-14 .. 1831-12"
+    range_match = re.match(rf'^({date_pattern})\s*(?:\.\.|-)\s*({date_pattern})$', date_str)
+    if range_match:
+        start_str, end_str = range_match.groups()
+        result['date_start'] = _parse_single_date(start_str, is_start=True)
+        result['date_end'] = _parse_single_date(end_str, is_start=False)
+        return result if result['date_start'] or result['date_end'] else None
+
+    # Pattern: "- 1878-12-01" or "- 1878-03" (end only) - duplicate as start
+    end_only_match = re.match(rf'^-\s*({date_pattern})$', date_str)
+    if end_only_match:
+        end_date = _parse_single_date(end_only_match.group(1), is_start=False)
+        result['date_end'] = end_date
+        result['date_start'] = _parse_single_date(end_only_match.group(1), is_start=True)
+        return result if result['date_end'] else None
+
+    # Pattern: ".. 1823-04-06" (start only notation) - duplicate as end
+    start_only_match = re.match(rf'^\.\.\s*({date_pattern})$', date_str)
+    if start_only_match:
+        start_date = _parse_single_date(start_only_match.group(1), is_start=True)
+        result['date_start'] = start_date
+        result['date_end'] = _parse_single_date(start_only_match.group(1), is_start=False)
+        return result if result['date_start'] else None
+
+    # Single date: YYYY, YYYY-MM, or YYYY-MM-DD
+    single_match = re.match(r'^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$', date_str)
+    if single_match:
+        year, month, day = single_match.groups()
+        year = int(year)
+        if year < 1000 or year > 2100:
+            return None
+
+        if day:
+            # Full date
+            d = _safe_date(year, int(month), int(day))
+            result['date_start'] = d
+            result['date_end'] = d
+        elif month:
+            # Year-month: start at 1st, end at last day of month
+            result['date_start'] = _safe_date(year, int(month), 1)
+            result['date_end'] = _last_day_of_month(year, int(month))
+        else:
+            # Year only
+            result['date_start'] = _safe_date(year, 1, 1)
+            result['date_end'] = _safe_date(year, 12, 31)
+        return result if result['date_start'] else None
+
+    return None
+
+
+# Spanish month names to numbers (including Peruvian spelling variants)
+SPANISH_MONTHS = {
+    'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
+    'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
+    'septiembre': 9, 'setiembre': 9,  # Peruvian spelling
+    'octubre': 10, 'noviembre': 11, 'diciembre': 12,
+}
+
+
+def _parse_spanish_date(date_str):
+    """Parse Spanish text date like '29 Marzo 1815' -> date(1815, 3, 29)."""
+    # Pattern: "29 Marzo 1815" or "7 Diciembre 1780"
+    match = re.match(r'^(\d{1,2})\s+([A-Za-záéíóú]+)\s+(\d{4})$', date_str.strip(), re.IGNORECASE)
+    if not match:
+        return None
+
+    day, month_name, year = match.groups()
+    month = SPANISH_MONTHS.get(month_name.lower())
+    if not month:
+        return None
+
+    return _safe_date(int(year), month, int(day))
+
+
+def _parse_spanish_date_range(date_str):
+    """Parse Spanish text date range like '7 Diciembre 1780 - 29 Junio 1781'."""
+    # Pattern: "7 Diciembre 1780 - 29 Junio 1781"
+    match = re.match(
+        r'^(\d{1,2})\s+([A-Za-záéíóú]+)\s+(\d{4})\s*-\s*(\d{1,2})\s+([A-Za-záéíóú]+)\s+(\d{4})$',
+        date_str.strip(), re.IGNORECASE
+    )
+    if not match:
+        return None
+
+    day1, month1_name, year1, day2, month2_name, year2 = match.groups()
+    month1 = SPANISH_MONTHS.get(month1_name.lower())
+    month2 = SPANISH_MONTHS.get(month2_name.lower())
+    if not month1 or not month2:
+        return None
+
+    return {
+        'date_start': _safe_date(int(year1), month1, int(day1)),
+        'date_end': _safe_date(int(year2), month2, int(day2)),
+        'date_certainty': '',
+    }
+
+
+def _parse_european_date(date_str):
+    """Parse European DD-MM-YYYY date like '13-02-1815' -> date(1815, 2, 13)."""
+    match = re.match(r'^(\d{1,2})-(\d{2})-(\d{4})$', date_str.strip())
+    if not match:
+        return None
+
+    day, month, year = match.groups()
+    year = int(year)
+    if year < 1000 or year > 2100:
+        return None
+
+    return _safe_date(year, int(month), int(day))
+
+
+def _parse_european_date_range(date_str):
+    """Parse European date ranges like '01-02-1820 .. 29-02-1820' or mixed formats."""
+    # Pattern for European date: DD-MM-YYYY
+    euro_pattern = r'(\d{1,2})-(\d{2})-(\d{4})'
+    # Pattern for ISO date: YYYY-MM-DD
+    iso_pattern = r'(\d{4})-(\d{2})-(\d{2})'
+
+    # Try Euro .. Euro
+    match = re.match(rf'^{euro_pattern}\s*(?:\.\.|-)\s*{euro_pattern}$', date_str)
+    if match:
+        d1, m1, y1, d2, m2, y2 = match.groups()
+        return {
+            'date_start': _safe_date(int(y1), int(m1), int(d1)),
+            'date_end': _safe_date(int(y2), int(m2), int(d2)),
+            'date_certainty': '',
+        }
+
+    # Try ISO .. Euro (mixed)
+    match = re.match(rf'^{iso_pattern}\s*(?:\.\.|-)\s*{euro_pattern}$', date_str)
+    if match:
+        y1, m1, d1, d2, m2, y2 = match.groups()
+        return {
+            'date_start': _safe_date(int(y1), int(m1), int(d1)),
+            'date_end': _safe_date(int(y2), int(m2), int(d2)),
+            'date_certainty': '',
+        }
+
+    # Try Euro .. ISO (mixed)
+    match = re.match(rf'^{euro_pattern}\s*(?:\.\.|-)\s*{iso_pattern}$', date_str)
+    if match:
+        d1, m1, y1, y2, m2, d2 = match.groups()
+        return {
+            'date_start': _safe_date(int(y1), int(m1), int(d1)),
+            'date_end': _safe_date(int(y2), int(m2), int(d2)),
+            'date_certainty': '',
+        }
+
+    return None
+
+
+def _parse_single_date(date_str, is_start=True):
+    """Parse a single date string like '1875', '1875-03', or '1824-10-16'."""
+    match = re.match(r'^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$', date_str.strip())
+    if not match:
+        return None
+
+    year, month, day = match.groups()
+    year = int(year)
+    if year < 1000 or year > 2100:
+        return None
+
+    if day:
+        return _safe_date(year, int(month), int(day))
+    elif month:
+        month = int(month)
+        if is_start:
+            return _safe_date(year, month, 1)
+        else:
+            return _last_day_of_month(year, month)
+    else:
+        if is_start:
+            return _safe_date(year, 1, 1)
+        else:
+            return _safe_date(year, 12, 31)
+
+
+def _last_day_of_month(year, month):
+    """Get the last day of a given month."""
+    import calendar
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, last_day)
+
+
+def _safe_date(year, month, day):
+    """Create date safely, handling invalid day/month combinations."""
+    try:
+        return date(year, month, day)
+    except ValueError:
+        # Handle invalid dates (e.g., Feb 30) - use last day of month
+        try:
+            import calendar
+            last_day = calendar.monthrange(year, month)[1]
+            return date(year, month, min(day, last_day))
+        except ValueError:
+            return None
 
 
 # CA MySQL connection settings
@@ -89,6 +358,40 @@ PLACE_ROLE_MAP = {
     'published': 'published',
 }
 
+# CA EAV attribute element_code -> Zasqua field
+# Based on actual CA data (see mysql query for element_code counts)
+CA_ATTRIBUTE_MAP = {
+    # Content fields (ISAD 3.3)
+    'description': 'scope_content',
+    'arrangement': 'arrangement',
+
+    # Dates - stored as text in unitdate
+    'unitdate': 'date_expression',
+
+    # Access fields (ISAD 3.4)
+    'accessrestrict': 'access_conditions',
+    'reproduction': 'reproduction_conditions',
+    'langmaterial': 'language',
+
+    # Physical description
+    'extent_text': 'extent',
+
+    # Allied materials (ISAD 3.5)
+    'originalsloc': 'location_of_originals',
+    'otherfindingaid': 'related_materials',
+
+    # Bibliographic (PE-BN printed materials)
+    'narra_imprenta': 'imprint',
+    'pages': 'pages',
+
+    # Notes
+    'note': 'notes',
+}
+
+# CA table_num values
+CA_TABLE_OBJECTS = 57
+CA_TABLE_COLLECTIONS = 13
+
 
 class Command(BaseCommand):
     help = 'Import data from CollectiveAccess MySQL database'
@@ -99,7 +402,8 @@ class Command(BaseCommand):
             type=str,
             required=True,
             choices=['repositories', 'collections', 'objects', 'entities',
-                     'entity_links', 'places', 'place_links', 'denormalize', 'all'],
+                     'entity_links', 'places', 'place_links', 'denormalize',
+                     'attributes', 'all'],
             help='Which phase to run'
         )
         parser.add_argument(
@@ -123,7 +427,8 @@ class Command(BaseCommand):
 
         if phase == 'all':
             phases = ['repositories', 'collections', 'objects', 'entities',
-                      'entity_links', 'places', 'place_links', 'denormalize']
+                      'entity_links', 'places', 'place_links', 'denormalize',
+                      'attributes']
         else:
             phases = [phase]
 
@@ -785,3 +1090,175 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"    {truncated} paths were truncated"))
 
         self.stdout.write(self.style.SUCCESS("Denormalization complete"))
+
+    def import_attributes(self):
+        """Phase 9: Import EAV attributes from CA into Description fields."""
+        import time
+        import sys
+
+        self.stdout.write("Importing EAV attributes from CA...")
+
+        conn = self.get_ca_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get element_codes we care about
+        element_codes = list(CA_ATTRIBUTE_MAP.keys())
+
+        # Build query for EAV data
+        placeholders = ', '.join(['%s'] * len(element_codes))
+
+        def fetch_attributes(table_num):
+            """Fetch attributes for a table type, grouped by row_id."""
+            query = f"""
+                SELECT
+                    a.row_id,
+                    me.element_code,
+                    av.value_longtext1
+                FROM ca_attributes a
+                JOIN ca_attribute_values av ON a.attribute_id = av.attribute_id
+                JOIN ca_metadata_elements me ON a.element_id = me.element_id
+                WHERE a.table_num = %s
+                    AND me.element_code IN ({placeholders})
+                    AND av.value_longtext1 IS NOT NULL
+                    AND av.value_longtext1 != ''
+            """
+            cursor.execute(query, [table_num] + element_codes)
+
+            # Group by row_id
+            attrs_by_id = {}
+            for row in cursor.fetchall():
+                row_id = row['row_id']
+                if row_id not in attrs_by_id:
+                    attrs_by_id[row_id] = {}
+
+                elem = row['element_code']
+                value = row['value_longtext1']
+
+                # For unitdate, prefer valid-looking dates over garbage like "152"
+                if elem == 'unitdate':
+                    existing = attrs_by_id[row_id].get(elem)
+                    if existing is None:
+                        attrs_by_id[row_id][elem] = value
+                    elif len(value) >= 4 and value[:4].isdigit() and int(value[:4]) >= 1000:
+                        # This looks like a real date (starts with 4-digit year >= 1000)
+                        if not (len(existing) >= 4 and existing[:4].isdigit() and int(existing[:4]) >= 1000):
+                            # Existing doesn't look like a real date, replace it
+                            attrs_by_id[row_id][elem] = value
+                        elif len(value) > len(existing):
+                            # Both look valid, prefer longer (more specific) date
+                            attrs_by_id[row_id][elem] = value
+                else:
+                    # For other elements, store first non-empty value
+                    if elem not in attrs_by_id[row_id]:
+                        attrs_by_id[row_id][elem] = value
+            return attrs_by_id
+
+        # Fetch object attributes (table_num = 57)
+        self.stdout.write("  Fetching object attributes...")
+        start = time.time()
+        object_attrs = fetch_attributes(CA_TABLE_OBJECTS)
+        self.stdout.write(f"    Found attributes for {len(object_attrs)} objects ({time.time()-start:.1f}s)")
+
+        # Fetch collection attributes (table_num = 13)
+        self.stdout.write("  Fetching collection attributes...")
+        start = time.time()
+        collection_attrs = fetch_attributes(CA_TABLE_COLLECTIONS)
+        self.stdout.write(f"    Found attributes for {len(collection_attrs)} collections ({time.time()-start:.1f}s)")
+
+        cursor.close()
+        conn.close()
+
+        # Update descriptions in batches
+        self.stdout.write("  Updating descriptions...")
+
+        fields_to_update = list(set(CA_ATTRIBUTE_MAP.values())) + ['date_start', 'date_end', 'date_certainty']
+
+        batch_size = 1000
+        total_updated = 0
+        start_time = time.time()
+
+        def apply_attributes(desc, attrs):
+            """Apply CA attributes to a Description object."""
+            changed = False
+
+            for element_code, zasqua_field in CA_ATTRIBUTE_MAP.items():
+                if element_code in attrs:
+                    value = attrs[element_code]
+                    if value and not getattr(desc, zasqua_field):
+                        # Truncate if too long
+                        if len(value) > 2000:
+                            value = value[:2000]
+                        setattr(desc, zasqua_field, value)
+                        changed = True
+
+            # Parse dates from date_expression
+            if desc.date_expression and not desc.date_start:
+                parsed = parse_date_expression(desc.date_expression)
+                if parsed:
+                    if parsed['date_start']:
+                        desc.date_start = parsed['date_start']
+                        changed = True
+                    if parsed['date_end']:
+                        desc.date_end = parsed['date_end']
+                        changed = True
+                    if parsed['date_certainty'] and not desc.date_certainty:
+                        desc.date_certainty = parsed['date_certainty']
+                        changed = True
+
+            return changed
+
+        # Process objects
+        self.stdout.write("    Processing objects...")
+        batch = []
+        for desc in Description.objects.filter(ca_object_id__isnull=False).iterator(chunk_size=1000):
+            ca_id = desc.ca_object_id
+            if ca_id in object_attrs:
+                if apply_attributes(desc, object_attrs[ca_id]):
+                    batch.append(desc)
+
+            if len(batch) >= batch_size:
+                Description.objects.bulk_update(batch, fields_to_update)
+                total_updated += len(batch)
+                elapsed = time.time() - start_time
+                rate = total_updated / elapsed if elapsed > 0 else 0
+                self.stdout.write(f"      Progress: {total_updated} updated ({rate:.0f}/sec)")
+                sys.stdout.flush()
+                batch = []
+
+        if batch:
+            Description.objects.bulk_update(batch, fields_to_update)
+            total_updated += len(batch)
+
+        # Process collections
+        self.stdout.write("    Processing collections...")
+        batch = []
+        for desc in Description.objects.filter(ca_collection_id__isnull=False).iterator(chunk_size=1000):
+            ca_id = desc.ca_collection_id
+            if ca_id in collection_attrs:
+                if apply_attributes(desc, collection_attrs[ca_id]):
+                    batch.append(desc)
+
+            if len(batch) >= batch_size:
+                Description.objects.bulk_update(batch, fields_to_update)
+                total_updated += len(batch)
+                batch = []
+
+        if batch:
+            Description.objects.bulk_update(batch, fields_to_update)
+            total_updated += len(batch)
+
+        elapsed = time.time() - start_time
+        self.stdout.write(f"    Updated {total_updated} descriptions in {elapsed:.1f}s")
+
+        # Print field population stats
+        self.stdout.write("\n  Field population stats:")
+        total = Description.objects.count()
+        for field in ['scope_content', 'date_expression', 'date_start', 'extent', 'arrangement']:
+            if field == 'date_start':
+                count = Description.objects.filter(date_start__isnull=False).count()
+            else:
+                count = Description.objects.exclude(**{field: ''}).count()
+            pct = count / total * 100 if total > 0 else 0
+            self.stdout.write(f"    {field}: {count} ({pct:.1f}%)")
+
+        self.stdout.write(self.style.SUCCESS("Attributes import complete"))

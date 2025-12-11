@@ -98,7 +98,7 @@ class Description(MPTTModel):
     date_certainty = models.CharField(max_length=20, blank=True)
 
     # --- Physical Description ---
-    extent = models.CharField(max_length=500, blank=True)
+    extent = models.CharField(max_length=1000, blank=True)
     dimensions = models.CharField(max_length=100, blank=True)
     medium = models.CharField(max_length=255, blank=True)
 
