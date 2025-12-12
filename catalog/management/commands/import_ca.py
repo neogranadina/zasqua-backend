@@ -380,12 +380,24 @@ CA_ATTRIBUTE_MAP = {
     'originalsloc': 'location_of_originals',
     'otherfindingaid': 'related_materials',
 
-    # Bibliographic (PE-BN printed materials)
+    # Bibliographic (PE-BN CDIP printed materials)
     'narra_imprenta': 'imprint',
     'pages': 'pages',
+    'narra_edic_vol': 'edition_statement',
+    'narra_tomo_titulo': 'series_statement',  # e.g. "Tomo 1, Los Ideólogos"
+    'narra_vol_titulo': 'uniform_title',      # e.g. "Volumen 1, Juan Pablo Viscardo..."
 
     # Notes
     'note': 'notes',
+
+    # Additional content fields
+    'scopecontent': 'scope_content',  # Alternate scope field (116 records)
+    'adminbiohist': 'provenance',     # Administrative history
+    'bibliography': 'related_materials',
+    'relatedmaterial': 'related_materials',
+
+    # Cataloging provenance (ISAD 3.7)
+    'descrules': 'internal_notes',
 }
 
 # CA table_num values
