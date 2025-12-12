@@ -35,7 +35,7 @@ class RepositoryDetailSerializer(serializers.ModelSerializer):
 
     def get_root_descriptions(self, obj):
         """Return top-level descriptions for this repository."""
-        roots = obj.descriptions.filter(parent__isnull=True)[:20]
+        roots = obj.descriptions.filter(parent__isnull=True)[:100]  # Increased limit
         return DescriptionListSerializer(roots, many=True).data
 
 
