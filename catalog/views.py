@@ -170,8 +170,8 @@ class DescriptionViewSet(viewsets.ReadOnlyModelViewSet):
             all: If 'true', return all children without pagination (default: true)
         """
         description = self.get_object()
-        # Annotate child_count to avoid N+1 queries in serializer
-        children = description.get_children().annotate(_child_count=Count('children'))
+        # Annotate child_count and sort by reference_code for consistent ordering
+        children = description.get_children().annotate(_child_count=Count('children')).order_by('reference_code')
 
         # By default, return all children for tree navigation
         # Use ?all=false to get paginated results

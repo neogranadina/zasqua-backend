@@ -135,6 +135,8 @@ class DescriptionListSerializer(serializers.ModelSerializer):
             return 'item'
         elif re.search(r'-tom\d+$', ref):
             return 'item'
+        elif re.search(r'-aht-\d+$', ref):  # AHRB legajos (co-ahrb-aht-003)
+            return 'item'
 
         # Infer from description_level hierarchy
         # Standard archival levels: fonds > subfonds > series > subseries > file > item
