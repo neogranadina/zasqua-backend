@@ -8,7 +8,7 @@ This command:
 4. Imports entities with structured name fields and name_variants
 5. Creates DescriptionEntity links
 
-CSV Sources (from /Users/juancobo/Databases/zasqua/catalogues/ahr/):
+CSV Sources (from zasqua-dev-notes/reference/catalogues/ahr/):
 - ahr_containers.csv: 2,619 containers (fondos, tomos, cajas, carpetas)
 - ahr_items.csv: 52,779 individual documents
 - ahr_entities.csv: 23,450 deduplicated entities with name_variants
@@ -30,7 +30,7 @@ from django.db import transaction
 from catalog.models import Description, Repository, Entity, DescriptionEntity
 
 
-DATA_DIR = '/Users/juancobo/Databases/zasqua/catalogues/ahr'
+DATA_DIR = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/ahr'
 CONTAINERS_CSV = f'{DATA_DIR}/ahr_containers.csv'
 ITEMS_CSV = f'{DATA_DIR}/ahr_items.csv'
 ENTITIES_CSV = f'{DATA_DIR}/ahr_entities.csv'

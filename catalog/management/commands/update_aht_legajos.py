@@ -20,7 +20,7 @@ from django.db import transaction
 from catalog.models import Description, Repository
 
 
-CSV_PATH = '/Users/juancobo/Databases/zasqua/catalogues/arhb/AHT_items_clean.csv'
+CSV_PATH = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/arhb/AHT_items_clean.csv'
 
 
 class Command(BaseCommand):

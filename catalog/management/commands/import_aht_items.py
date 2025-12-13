@@ -24,7 +24,7 @@ from catalog.models import Description, Repository
 
 
 # Use the cleaned CSV (original was split into clean + needs_review)
-CSV_PATH = '/Users/juancobo/Databases/zasqua/catalogues/arhb/AHT_items_clean.csv'
+CSV_PATH = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/arhb/AHT_items_clean.csv'
 
 
 class Command(BaseCommand):

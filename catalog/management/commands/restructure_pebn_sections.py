@@ -28,7 +28,7 @@ CA_DB_CONFIG = {
     'charset': 'utf8mb4',
 }
 
-CLEANING_CSV = '/Users/juancobo/Databases/zasqua/catalogues/pebn/section_title_mappings.csv'
+CLEANING_CSV = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/pebn/section_title_mappings.csv'
 
 
 class Command(BaseCommand):
