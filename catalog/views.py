@@ -44,7 +44,7 @@ class DescriptionViewSet(viewsets.ReadOnlyModelViewSet):
     tree: Get hierarchical tree structure
     search: Full-text search across descriptions
     """
-    queryset = Description.objects.select_related('repository').order_by('tree_id', 'lft')
+    queryset = Description.objects.select_related('repository', 'parent').order_by('tree_id', 'lft')
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'scope_content', 'local_identifier', 'creator_display']
     ordering_fields = ['title', 'date_start', 'created_at']
@@ -156,9 +156,26 @@ class DescriptionViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def children(self, request, pk=None):
-        """Get direct children of this description."""
+        """
+        Get direct children of this description.
+
+        Query params:
+            all: If 'true', return all children without pagination (default: true)
+        """
         description = self.get_object()
         children = description.get_children()
+
+        # By default, return all children for tree navigation
+        # Use ?all=false to get paginated results
+        return_all = request.query_params.get('all', 'true').lower() in ('true', '1', 'yes')
+
+        if return_all:
+            serializer = DescriptionListSerializer(children, many=True)
+            return Response({
+                'count': children.count(),
+                'results': serializer.data
+            })
+
         page = self.paginate_queryset(children)
         if page is not None:
             serializer = DescriptionListSerializer(page, many=True)

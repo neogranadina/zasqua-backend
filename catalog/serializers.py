@@ -87,15 +87,22 @@ class DescriptionPlaceSerializer(serializers.ModelSerializer):
 class DescriptionListSerializer(serializers.ModelSerializer):
     """Compact serializer for description listings."""
     repository_code = serializers.CharField(source='repository.code', read_only=True)
+    parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+    parent_reference_code = serializers.CharField(source='parent.reference_code', read_only=True, allow_null=True)
     has_children = serializers.SerializerMethodField()
     child_count = serializers.SerializerMethodField()
+    children_level = serializers.SerializerMethodField()
 
     class Meta:
         model = Description
         fields = [
             'id', 'repository_code', 'reference_code', 'local_identifier',
             'title', 'description_level', 'date_expression',
-            'has_children', 'child_count', 'has_digital'
+            'parent_id', 'parent_reference_code',
+            'has_children', 'child_count', 'children_level', 'has_digital',
+            # Include key metadata for description pages
+            'scope_content', 'extent', 'arrangement', 'access_conditions',
+            'language', 'notes', 'creator_display', 'place_display'
         ]
 
     def get_has_children(self, obj):
@@ -103,6 +110,23 @@ class DescriptionListSerializer(serializers.ModelSerializer):
 
     def get_child_count(self, obj):
         return obj.get_children().count()
+
+    def get_children_level(self, obj):
+        """Return the description_level of the first child, or infer from title patterns."""
+        first_child = obj.get_children().first()
+        if first_child:
+            # Check if title suggests a container type (Caja, Carpeta, Legajo, Tomo)
+            title_lower = first_child.title.lower()
+            if title_lower.startswith('caja '):
+                return 'caja'
+            elif title_lower.startswith('carpeta '):
+                return 'carpeta'
+            elif title_lower.startswith('legajo '):
+                return 'legajo'
+            elif title_lower.startswith('tomo '):
+                return 'tomo'
+            return first_child.description_level
+        return None
 
 
 class DescriptionDetailSerializer(serializers.ModelSerializer):

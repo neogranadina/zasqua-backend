@@ -208,6 +208,10 @@ class Entity(models.Model):
                                    help_text='Unique identifier (ne-xxxxx) for URLs and citations')
     display_name = models.CharField(max_length=500, db_index=True)
     sort_name = models.CharField(max_length=500, db_index=True)
+    surname = models.CharField(max_length=200, blank=True, db_index=True,
+                               help_text='Family name (without particles like de/del)')
+    given_name = models.CharField(max_length=200, blank=True,
+                                  help_text='Given name(s), including particles (e.g., "Agustina del")')
     entity_type = models.CharField(max_length=20, choices=EntityType.choices)
     honorific = models.CharField(max_length=100, blank=True,
                                  help_text='Primary form of address (Don, Fray, Dr.)')
