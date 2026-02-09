@@ -288,9 +288,10 @@ def meilisearch_search(request):
     Full-text search using Meilisearch.
 
     Query params:
-        q: Search query (required)
-        repository: Filter by repository code
-        level: Filter by description level
+        q: Search query (optional, empty returns all documents)
+        repository: Filter by repository code (repeatable for multi-select)
+        level: Filter by description level (repeatable for multi-select)
+        has_digital: Filter by digitised status (true/false)
         date_from: Filter by date range start (year)
         date_to: Filter by date range end (year)
         sort: Sort field (date_start_year:asc, date_start_year:desc, title:asc)
@@ -305,18 +306,17 @@ def meilisearch_search(request):
         total_pages: Total number of pages
     """
     query = request.query_params.get('q', '').strip()
-    if not query:
-        return Response(
-            {'error': 'Search query (q) is required'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
 
     # Build filters
     filters = {}
-    if request.query_params.get('repository'):
-        filters['repository_code'] = request.query_params.get('repository')
-    if request.query_params.get('level'):
-        filters['description_level'] = request.query_params.get('level')
+    repositories = request.query_params.getlist('repository')
+    if repositories:
+        filters['repository_code'] = repositories if len(repositories) > 1 else repositories[0]
+    levels = request.query_params.getlist('level')
+    if levels:
+        filters['description_level'] = levels if len(levels) > 1 else levels[0]
+    if request.query_params.get('has_digital') == 'true':
+        filters['has_digital'] = 'true'
     if request.query_params.get('date_from'):
         try:
             filters['date_from'] = int(request.query_params.get('date_from'))

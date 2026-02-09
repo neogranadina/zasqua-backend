@@ -62,6 +62,7 @@ def configure_index():
     index.update_sortable_attributes([
         'title',
         'date_start_year',
+        'reference_code',
         'created_at',
     ])
 
@@ -186,6 +187,8 @@ def search(query, filters=None, sort=None, page=1, per_page=50):
                 filter_parts.append(f'date_end_year >= {value}')
             elif key == 'date_to' and value:
                 filter_parts.append(f'date_start_year <= {value}')
+            elif key == 'has_digital':
+                filter_parts.append(f'has_digital = true')
             elif isinstance(value, list):
                 # OR within same field
                 conditions = ' OR '.join(f'{key} = "{v}"' for v in value)
