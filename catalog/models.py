@@ -40,6 +40,7 @@ class Repository(models.Model):
     """
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)
+    short_name = models.CharField(max_length=200, blank=True)
     country_code = models.CharField(max_length=3, default='COL')
     city = models.CharField(max_length=100, blank=True)
 

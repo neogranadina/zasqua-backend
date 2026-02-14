@@ -39,6 +39,16 @@ _LEVEL_HIERARCHY = {
     'file': 'item',
 }
 
+# Map CA list-item IDs and legacy strings to display names.
+# All materials in the archive are in Spanish; the DB stores raw CA IDs
+# (e.g. '192') which we translate here to preserve DB provenance.
+_LANGUAGE_MAP = {
+    '192': 'Español',
+    '173': 'Español',
+    '195': 'Español',
+    'Spanish': 'Español',
+}
+
 
 def _children_level(ref, level, child_refs):
     """Infer the archival level of a description's children."""
@@ -71,6 +81,11 @@ def _children_level(ref, level, child_refs):
             return 'tomo'
         if has_carpeta:
             return 'carpeta'
+
+    if level == 'series' and child_refs:
+        sample = child_refs[:20]
+        if any(re.search(r'-aht-\d+$', r) or re.search(r'-leg\d+$', r) for r in sample):
+            return 'legajo'
 
     return _LEVEL_HIERARCHY.get(level)
 
@@ -195,7 +210,7 @@ class Command(BaseCommand):
                 'extent': d['extent'],
                 'arrangement': d['arrangement'],
                 'access_conditions': d['access_conditions'],
-                'language': d['language'],
+                'language': _LANGUAGE_MAP.get(d['language'], d['language']),
                 'notes': d['notes'],
                 'creator_display': d['creator_display'],
                 'place_display': d['place_display'],
@@ -236,6 +251,7 @@ class Command(BaseCommand):
                 'id': repo.id,
                 'code': repo.code,
                 'name': repo.name,
+                'short_name': repo.short_name,
                 'country_code': repo.country_code,
                 'city': repo.city,
                 'address': repo.address,
