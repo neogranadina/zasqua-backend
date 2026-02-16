@@ -146,7 +146,7 @@ class Command(BaseCommand):
                 'scope_content', 'ocr_text', 'extent', 'arrangement',
                 'access_conditions', 'language', 'notes',
                 'creator_display', 'place_display',
-                'has_digital', 'lft', 'rght',
+                'has_digital', 'iiif_manifest_url', 'lft', 'rght',
             )
         )
 
@@ -209,6 +209,7 @@ class Command(BaseCommand):
                 'child_count': d['child_count'],
                 'children_level': d['children_level'],
                 'has_digital': d['has_digital'],
+                'iiif_manifest_url': d['iiif_manifest_url'] or '',
                 'scope_content': d['scope_content'],
                 'ocr_text': d['ocr_text'],
                 'extent': d['extent'],
