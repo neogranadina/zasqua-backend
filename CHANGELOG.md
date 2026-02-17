@@ -2,7 +2,9 @@
 
 All notable changes to the Zasqua backend will be documented in this file. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.0] — 2026-02-17
+
+IIIF manifest generation, metadata field expansion, and country support.
 
 ### Added
 
@@ -12,6 +14,15 @@ All notable changes to the Zasqua backend will be documented in this file. Forma
   - `--pdf-pages` option for pre-computed PDF page count resolution
   - Bulk-updates `iiif_manifest_url` on Description model
 - `iiif_manifest_url` field added to `export_frontend_data` output
+- `country` field on Repository model
+- `finding_aids`, `section_title` fields on Description model
+- 12 new fields in `export_frontend_data` output: imprint, edition_statement, series_statement, uniform_title, section_title, pages, reproduction_conditions, location_of_originals, finding_aids, related_materials, country, publication_title
+
+### Fixed
+
+- `otherfindingaid` attribute now maps to `finding_aids` instead of `related_materials`
+- Multiple notes from CA concatenated with pipe separator instead of keeping only the first
+- Country populated dynamically from Repository model instead of hardcoded in IIIF attribution
 
 ## [0.1.0] — 2026-02-14
 
