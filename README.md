@@ -1,15 +1,20 @@
 # Zasqua Backend
 
-Django application for the [Zasqua](https://zasqua.org) archival platform.
+Django cataloguing backend for [Zasqua](https://zasqua.org), an open-source archival platform for hosting and discovering large collections of digitized historical documents.
 
 ## Overview
 
-Zasqua Backend manages archival descriptions, entities, and places for four Colombian and one Peruvian repository — roughly 104,000 descriptions and 52,000 entities. It provides:
+Zasqua Backend is the cataloguing and data export engine for the Zasqua platform. It manages archival descriptions, entities, and places for five repositories in Colombia and Peru — over 104,000 descriptions and 52,000 entities covering colonial and republican-era judicial, notarial, ecclesiastical, and administrative records.
 
+The backend runs locally as a cataloguing tool. It is never deployed as a public-facing server — instead, it exports structured JSON data that the [static frontend](https://github.com/neogranadina/zasqua-frontend) builds into a fully static site. This architecture follows minimal computing principles: the public site has no runtime server, no database queries at request time, and no ongoing infrastructure costs beyond file hosting.
+
+**Key capabilities:**
+
+- MPTT-based hierarchical data model (archival fonds, series, items) following ISAD(G) standards
+- Management commands for data import from CollectiveAccess and CSV sources
+- JSON export pipeline for the static frontend build
+- IIIF Presentation API v3 manifest generation for digitized materials
 - REST API for archival descriptions, entities, and places
-- MPTT-based hierarchical data model (archival fonds, series, items)
-- Management commands for data import and frontend export
-- IIIF manifest generation for digitized materials
 
 ## Requirements
 
