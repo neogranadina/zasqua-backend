@@ -74,19 +74,19 @@ python manage.py runserver
 python manage.py import_ca --phase [descriptions|entities|places|links]
 
 # Import AHR hierarchy from clean CSVs
-python manage.py import_ahr_hierarchy
+python manage.py import_ahr_hierarchy --data-dir /path/to/ahr/csvs
 
 # Import AHT item-level records from CSV
-python manage.py import_aht_items
+python manage.py import_aht_items --csv-path /path/to/AHT_items_clean.csv
 
 # Update AHT legajo containers with metadata from CSV
-python manage.py update_aht_legajos
+python manage.py update_aht_legajos --csv-path /path/to/AHT_items_clean.csv
 
 # Import OCR text from CA representations
 python manage.py import_ocr_text
 
 # Restructure PE-BN CDIP items into section-level hierarchy
-python manage.py restructure_pebn_sections
+python manage.py restructure_pebn_sections --cleaning-csv /path/to/section_title_mappings.csv
 ```
 
 ### Data Export

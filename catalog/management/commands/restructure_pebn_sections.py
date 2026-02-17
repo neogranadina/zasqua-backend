@@ -7,8 +7,8 @@ This command:
 3. Optionally updates item reference codes with element numbers
 
 Usage:
-    python manage.py restructure_pebn_sections --dry-run
-    python manage.py restructure_pebn_sections
+    python manage.py restructure_pebn_sections --cleaning-csv /path/to/section_title_mappings.csv --dry-run
+    python manage.py restructure_pebn_sections --cleaning-csv /path/to/section_title_mappings.csv
 """
 
 import csv
@@ -28,13 +28,15 @@ CA_DB_CONFIG = {
     'charset': 'utf8mb4',
 }
 
-CLEANING_CSV = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/pebn/section_title_mappings.csv'
-
-
 class Command(BaseCommand):
     help = 'Restructure PE-BN CDIP items into section-level hierarchy'
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--cleaning-csv',
+            required=True,
+            help='Path to the section title mappings CSV file'
+        )
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -42,6 +44,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        self.cleaning_csv = options['cleaning_csv']
         dry_run = options['dry_run']
 
         if dry_run:
@@ -91,7 +94,7 @@ class Command(BaseCommand):
     def load_cleaning_mappings(self):
         """Load section title cleaning mappings from CSV."""
         self.cleaning_map = {}
-        with open(CLEANING_CSV, 'r', encoding='utf-8') as f:
+        with open(self.cleaning_csv, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 orig = row['original_title']

@@ -8,8 +8,8 @@ This command updates the 134 legajo containers with:
 - clears needs_review flag for legajos that now have metadata
 
 Usage:
-    python manage.py update_aht_legajos --dry-run
-    python manage.py update_aht_legajos
+    python manage.py update_aht_legajos --csv-path /path/to/AHT_items_clean.csv --dry-run
+    python manage.py update_aht_legajos --csv-path /path/to/AHT_items_clean.csv
 """
 
 import csv
@@ -20,13 +20,15 @@ from django.db import transaction
 from catalog.models import Description, Repository
 
 
-CSV_PATH = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/arhb/AHT_items_clean.csv'
-
-
 class Command(BaseCommand):
     help = 'Update AHT legajo containers with metadata from Pilar CSV'
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--csv-path',
+            required=True,
+            help='Path to the cleaned AHT items CSV file'
+        )
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -34,6 +36,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        csv_path = options['csv_path']
         dry_run = options['dry_run']
 
         if dry_run:
@@ -66,7 +69,7 @@ class Command(BaseCommand):
 
         # Load CSV and filter for File-level (legajo) rows
         legajo_rows = []
-        with open(CSV_PATH, 'r', encoding='utf-8') as f:
+        with open(csv_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 if row.get('levelOfDescription', '').strip() == 'File':

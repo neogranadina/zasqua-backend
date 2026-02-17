@@ -10,9 +10,9 @@ Rows without identifiers are skipped and exported to a separate CSV for
 manual review.
 
 Usage:
-    python manage.py import_aht_items --dry-run
-    python manage.py import_aht_items
-    python manage.py import_aht_items --skip-existing  # Skip legajos that already have items
+    python manage.py import_aht_items --csv-path /path/to/AHT_items_clean.csv --dry-run
+    python manage.py import_aht_items --csv-path /path/to/AHT_items_clean.csv
+    python manage.py import_aht_items --csv-path /path/to/AHT_items_clean.csv --skip-existing
 """
 
 import csv
@@ -23,14 +23,15 @@ from django.db import transaction
 from catalog.models import Description, Repository
 
 
-# Use the cleaned CSV (original was split into clean + needs_review)
-CSV_PATH = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/arhb/AHT_items_clean.csv'
-
-
 class Command(BaseCommand):
     help = 'Import AHT item-level records from Pilar CSV'
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--csv-path',
+            required=True,
+            help='Path to the cleaned AHT items CSV file'
+        )
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -43,6 +44,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        self.csv_path = options['csv_path']
+        self.review_csv_path = self.csv_path.replace('.csv', '_needs_review.csv')
         dry_run = options['dry_run']
         skip_existing = options['skip_existing']
 
@@ -166,7 +169,7 @@ class Command(BaseCommand):
 
         if needs_review:
             self.stdout.write(self.style.WARNING(f'\nExported {len(needs_review)} rows to:'))
-            self.stdout.write(f'  {REVIEW_CSV_PATH}')
+            self.stdout.write(f'  {self.review_csv_path}')
 
         if errors:
             self.stdout.write(self.style.WARNING('\nFirst 20 errors:'))
@@ -187,7 +190,7 @@ class Command(BaseCommand):
     def load_csv(self):
         """Load CSV file and return rows with fieldnames."""
         rows = []
-        with open(CSV_PATH, 'r', encoding='utf-8') as f:
+        with open(self.csv_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
@@ -199,7 +202,7 @@ class Command(BaseCommand):
         # Add our custom columns at the beginning
         review_fieldnames = ['_row_number', '_inferred_legajo'] + list(fieldnames)
 
-        with open(REVIEW_CSV_PATH, 'w', encoding='utf-8', newline='') as f:
+        with open(self.review_csv_path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=review_fieldnames, extrasaction='ignore')
             writer.writeheader()
             for row in rows:

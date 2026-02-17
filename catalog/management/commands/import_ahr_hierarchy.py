@@ -8,16 +8,16 @@ This command:
 4. Imports entities with structured name fields and name_variants
 5. Creates DescriptionEntity links
 
-CSV Sources (from zasqua-dev-notes/reference/catalogues/ahr/):
+CSV Sources:
 - ahr_containers.csv: 2,619 containers (fondos, tomos, cajas, carpetas)
 - ahr_items.csv: 52,779 individual documents
 - ahr_entities.csv: 23,450 deduplicated entities with name_variants
 - ahr_entity_links.csv: 88,659 item-to-entity links
 
 Usage:
-    python manage.py import_ahr_hierarchy --dry-run
-    python manage.py import_ahr_hierarchy
-    python manage.py import_ahr_hierarchy --only-entities  # Just entities/links
+    python manage.py import_ahr_hierarchy --data-dir /path/to/ahr/csvs --dry-run
+    python manage.py import_ahr_hierarchy --data-dir /path/to/ahr/csvs
+    python manage.py import_ahr_hierarchy --data-dir /path/to/ahr/csvs --only-entities
 """
 
 import csv
@@ -28,13 +28,6 @@ from datetime import date
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from catalog.models import Description, Repository, Entity, DescriptionEntity
-
-
-DATA_DIR = '/Users/juancobo/Databases/zasqua/zasqua-dev-notes/reference/catalogues/ahr'
-CONTAINERS_CSV = f'{DATA_DIR}/ahr_containers.csv'
-ITEMS_CSV = f'{DATA_DIR}/ahr_items.csv'
-ENTITIES_CSV = f'{DATA_DIR}/ahr_entities.csv'
-ENTITY_LINKS_CSV = f'{DATA_DIR}/ahr_entity_links.csv'
 
 
 class Command(BaseCommand):
@@ -64,6 +57,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '--data-dir',
+            required=True,
+            help='Path to directory containing AHR CSV files (ahr_containers.csv, ahr_items.csv, ahr_entities.csv, ahr_entity_links.csv)'
+        )
+        parser.add_argument(
             '--dry-run',
             action='store_true',
             help='Show what would be done without making changes'
@@ -80,6 +78,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        data_dir = options['data_dir']
+        self.containers_csv = f'{data_dir}/ahr_containers.csv'
+        self.items_csv = f'{data_dir}/ahr_items.csv'
+        self.entities_csv = f'{data_dir}/ahr_entities.csv'
+        self.entity_links_csv = f'{data_dir}/ahr_entity_links.csv'
+
         dry_run = options['dry_run']
         skip_clear = options['skip_clear']
         only_entities = options['only_entities']
@@ -188,11 +192,11 @@ class Command(BaseCommand):
         parent IDs to be available for child containers in the same batch.
         """
         self.log_phase('PHASE 2: Importing containers')
-        self.log(f'  Source: {CONTAINERS_CSV}')
+        self.log(f'  Source: {self.containers_csv}')
 
         rows = []
         self.log('  Loading CSV...', newline=False)
-        with open(CONTAINERS_CSV, 'r', encoding='utf-8') as f:
+        with open(self.containers_csv, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 rows.append(row)
@@ -264,11 +268,11 @@ class Command(BaseCommand):
     def import_items(self, dry_run):
         """Import items from CSV with all metadata using batch creation."""
         self.log_phase('PHASE 3: Importing items')
-        self.log(f'  Source: {ITEMS_CSV}')
+        self.log(f'  Source: {self.items_csv}')
 
         # Count total rows first
         self.log('  Counting rows...', newline=False)
-        with open(ITEMS_CSV, 'r', encoding='utf-8') as f:
+        with open(self.items_csv, 'r', encoding='utf-8') as f:
             total = sum(1 for _ in f) - 1  # Subtract header
         self.log(f' {total:,} items')
 
@@ -278,7 +282,7 @@ class Command(BaseCommand):
         batch_refs = []  # Track ref codes for ID lookup after bulk_create
         BATCH_SIZE = 1000
 
-        with open(ITEMS_CSV, 'r', encoding='utf-8') as f:
+        with open(self.items_csv, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
 
             for row in reader:
@@ -366,11 +370,11 @@ class Command(BaseCommand):
     def import_entities(self, dry_run):
         """Import entities from CSV with all metadata including name_variants."""
         self.log_phase('PHASE 4: Importing entities')
-        self.log(f'  Source: {ENTITIES_CSV}')
+        self.log(f'  Source: {self.entities_csv}')
 
         # Count total rows first
         self.log('  Counting rows...', newline=False)
-        with open(ENTITIES_CSV, 'r', encoding='utf-8') as f:
+        with open(self.entities_csv, 'r', encoding='utf-8') as f:
             total = sum(1 for _ in f) - 1
         self.log(f' {total:,} entities')
 
@@ -391,7 +395,7 @@ class Command(BaseCommand):
         batch = []
         BATCH_SIZE = 1000
 
-        with open(ENTITIES_CSV, 'r', encoding='utf-8') as f:
+        with open(self.entities_csv, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
 
             for row in reader:
@@ -476,11 +480,11 @@ class Command(BaseCommand):
     def import_entity_links(self, dry_run):
         """Import entity-description links from CSV."""
         self.log_phase('PHASE 5: Importing entity links')
-        self.log(f'  Source: {ENTITY_LINKS_CSV}')
+        self.log(f'  Source: {self.entity_links_csv}')
 
         # Count total rows first
         self.log('  Counting rows...', newline=False)
-        with open(ENTITY_LINKS_CSV, 'r', encoding='utf-8') as f:
+        with open(self.entity_links_csv, 'r', encoding='utf-8') as f:
             total = sum(1 for _ in f) - 1
         self.log(f' {total:,} links')
 
@@ -508,7 +512,7 @@ class Command(BaseCommand):
 
         batch = []
 
-        with open(ENTITY_LINKS_CSV, 'r', encoding='utf-8') as f:
+        with open(self.entity_links_csv, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
 
             for row in reader:

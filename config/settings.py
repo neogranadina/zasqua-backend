@@ -1,5 +1,5 @@
 """
-Django settings for Fisqua project.
+Django settings for Zasqua project.
 
 For more information on this file, see
 https://docs.djangoproject.com/en/6.0/topics/settings/
