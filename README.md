@@ -126,6 +126,10 @@ black .
 flake8
 ```
 
+## Related
+
+- [Zasqua Frontend](https://github.com/neogranadina/zasqua-frontend) — Static site built with Eleventy and Pagefind
+
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE) for details.
