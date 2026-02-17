@@ -2,6 +2,17 @@
 
 All notable changes to the Zasqua backend will be documented in this file. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `generate_iiif_manifests` management command — generates IIIF Presentation API v3 manifests from CA image manifest CSV joined with Django DB metadata
+  - Per-repository bilingual attribution (requiredStatement), CC BY-NC 4.0 rights, Neogranadina provider
+  - EAP 1477 (Endangered Archives Programme) acknowledgement for AHJCI materials
+  - `--pdf-pages` option for pre-computed PDF page count resolution
+  - Bulk-updates `iiif_manifest_url` on Description model
+- `iiif_manifest_url` field added to `export_frontend_data` output
+
 ## [0.1.0] — 2026-02-14
 
 First release. Django cataloging backend with CollectiveAccess migration, REST API, and static data export.
