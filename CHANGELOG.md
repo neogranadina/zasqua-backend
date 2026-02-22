@@ -2,6 +2,29 @@
 
 All notable changes to the Zasqua backend will be documented in this file. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] — 2026-02-21
+
+METS metadata export, description page metadata improvements, and title improvement for Colombian repositories.
+
+### Added
+
+- `generate_mets` management command — generates METS 1.12.1 XML with Dublin Core descriptive metadata for all 104K descriptions
+- `location_of_copies` field on Description model (ISAD 3.5.2)
+- `image_reproduction_text` per-repository field in export output
+- `mets_url` computed field in export output
+- IIIF manifests now include `seeAlso` link to METS document
+
+### Changed
+
+- IIIF manifest paths renamed from object_idno to reference_code slug
+- 86,049 Colombian description titles improved via batch processing (ACC, AHR, AHRB, AHJCI)
+
+### Fixed
+
+- Cleared incorrect PE-BN `reproduction_conditions` data (14,421 records)
+- Cleared `date_expression = '152'` data issue (4,888 records)
+- Fixed `pe-bn-cdip-00149` stale `iiif_manifest_url` pointing to localhost
+
 ## [0.2.0] — 2026-02-17
 
 IIIF manifest generation, metadata field expansion, and country support.
