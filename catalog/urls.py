@@ -7,7 +7,6 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     RepositoryViewSet, DescriptionViewSet, EntityViewSet, PlaceViewSet,
-    meilisearch_search
 )
 
 router = DefaultRouter()
@@ -17,6 +16,5 @@ router.register(r'entities', EntityViewSet, basename='entity')
 router.register(r'places', PlaceViewSet, basename='place')
 
 urlpatterns = [
-    path('search/', meilisearch_search, name='search'),
     path('', include(router.urls)),
 ]

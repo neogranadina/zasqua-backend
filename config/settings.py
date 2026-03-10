@@ -172,9 +172,3 @@ REST_FRAMEWORK = {
 # In development, allow all origins. In production, set CORS_ALLOWED_ORIGINS env var.
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if os.getenv('CORS_ALLOWED_ORIGINS') else []
 CORS_ALLOW_ALL_ORIGINS = DEBUG and not CORS_ALLOWED_ORIGINS
-
-
-# Meilisearch settings
-MEILISEARCH_URL = os.getenv('MEILISEARCH_URL', 'http://localhost:7700')
-MEILISEARCH_API_KEY = os.getenv('MEILISEARCH_API_KEY', '')  # Optional for local dev
-MEILISEARCH_INDEX = os.getenv('MEILISEARCH_INDEX', 'descriptions')
