@@ -24,7 +24,6 @@ Usage:
 import csv
 import json
 import os
-import re
 import sys
 import time
 
@@ -33,6 +32,12 @@ from django.core.management.base import BaseCommand
 from catalog.models import Description
 
 from iiif_prezi3 import KeyValueString, Manifest
+
+# Import shared image name extraction from the IIIF tiling module
+sys.path.insert(0, os.path.join(
+    os.path.dirname(__file__), '..', '..', '..', 'scripts', 'iiif'
+))
+from iiif_tiling import extract_image_name  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -95,33 +100,6 @@ _COUNTRY_EN = {
     'Colombia': 'Colombia',
     'Perú': 'Peru',
 }
-
-
-# ---------------------------------------------------------------------------
-# Image name extraction (shared with generate_tiles_production.py)
-# ---------------------------------------------------------------------------
-
-IMAGE_NAME_PATTERNS = [
-    # ACC: ACC_00001-Civil_I_H-img_0004.jpg -> img_0004
-    re.compile(r'ACC_.*-(img_\d+)'),
-    # AHRB: AHRB_AHT_003-img_0073.jpg -> img_0073
-    re.compile(r'AHRB_.*-(img_\d+)'),
-    # AHJCI: EAP1477_MFC_B01_Doc02_MurillovsMoreno_IMG_001.jpg -> IMG_001
-    re.compile(r'.*_(IMG_\d+)'),
-    # PDF pages: page_001.jpg -> page_001
-    re.compile(r'(page_\d+)'),
-]
-
-
-def extract_image_name(filename):
-    """Extract a short image identifier from a filename."""
-    from pathlib import Path
-    stem = Path(filename).stem
-    for pattern in IMAGE_NAME_PATTERNS:
-        match = pattern.match(stem)
-        if match:
-            return match.group(1)
-    raise ValueError(f"Cannot extract image name from '{filename}'")
 
 
 def derive_doc_slug(object_idno):
