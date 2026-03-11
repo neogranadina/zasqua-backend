@@ -17,14 +17,14 @@
 #   5. Prints name and IP when each droplet is confirmed SSH-ready
 #
 # Droplet spec:
-#   Size:   c-8-16gib
+#   Size:   c-8
 #   Region: nyc3
 #   Image:  ubuntu-24-04-x64
 
 set -euo pipefail
 
 DROPLET_NAMES=(zasqua-aht zasqua-n1 zasqua-n2 zasqua-nvl zasqua-cabildos)
-SIZE="c-8-16gib"
+SIZE="c-8"
 REGION="nyc3"
 IMAGE="ubuntu-24-04-x64"
 SSH_MAX_ATTEMPTS=60

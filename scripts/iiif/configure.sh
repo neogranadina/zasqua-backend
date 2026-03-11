@@ -50,7 +50,7 @@ ssh $SSH_OPTS "root@$IP" \
 echo ""
 echo "[2/7] Installing Pillow..."
 # shellcheck disable=SC2029
-ssh $SSH_OPTS "root@$IP" "pip3 install --quiet Pillow"
+ssh $SSH_OPTS "root@$IP" "pip3 install --quiet --break-system-packages Pillow"
 
 # ── Verify dependencies ───────────────────────────────────────────────────────
 
