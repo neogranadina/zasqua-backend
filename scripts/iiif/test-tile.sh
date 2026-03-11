@@ -41,7 +41,7 @@ echo "── Tiling output ─────────────────�
 
 # shellcheck disable=SC2029
 ssh $SSH_OPTS "root@$IP" \
-  "python /root/zasqua/scripts/iiif/ingest_dropbox_volumes.py \
+  "python3 /root/zasqua/scripts/iiif/ingest_dropbox_volumes.py \
     --manifest /root/zasqua/volumes-cabildos.csv \
     --dropbox-root 'dropbox:/Archivos Comunes/Imagenes/Copia seguridad AHRB' \
     --work-dir /mnt/work \
