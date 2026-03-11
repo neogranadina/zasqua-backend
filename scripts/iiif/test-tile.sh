@@ -36,6 +36,14 @@ SLUG="co-$(echo "$FOND" | tr '[:upper:]' '[:lower:]' | tr '_' '-')-${VOLUME}"
 echo "  First volume: fond=$FOND volume=$VOLUME slug=$SLUG"
 echo ""
 
+# Guard: refuse to run if ingest is already running on the droplet
+RUNNING=$(ssh $SSH_OPTS "root@$IP" "pgrep -f ingest_dropbox_volumes || true")
+if [[ -n "$RUNNING" ]]; then
+  echo "ERROR: ingest_dropbox_volumes.py is already running on $DROPLET_NAME (PID: $RUNNING)" >&2
+  echo "Kill it first or wait for it to finish." >&2
+  exit 1
+fi
+
 echo "Tiling one volume on $DROPLET_NAME ($IP) with --limit 1..."
 echo "── Tiling output ───────────────────────────────────────────────────────────"
 
@@ -48,7 +56,6 @@ ssh $SSH_OPTS "root@$IP" \
     --base-url https://iiif.zasqua.org \
     --r2-remote r2:zasqua-iiif-tiles \
     --progress /root/zasqua/progress.log \
-    --errors-log /root/zasqua/errors.log \
     --limit 1"
 
 echo "────────────────────────────────────────────────────────────────────────────"

@@ -34,6 +34,13 @@ for FOND in aht cabildos n1 n2 nvl; do
     exit 1
   fi
 
+  # Guard: skip droplet if ingest is already running
+  RUNNING=$(ssh $SSH_OPTS "root@$IP" "pgrep -f ingest_dropbox_volumes || true")
+  if [[ -n "$RUNNING" ]]; then
+    echo "  SKIPPED: ingest already running (PID: $RUNNING)"
+    continue
+  fi
+
   # shellcheck disable=SC2029
   ssh $SSH_OPTS "root@$IP" \
     "nohup python3 /root/zasqua/scripts/iiif/ingest_dropbox_volumes.py \
