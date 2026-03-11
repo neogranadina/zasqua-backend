@@ -35,7 +35,8 @@ for FOND in aht cabildos n1 n2 nvl; do
   fi
 
   # Guard: skip droplet if ingest is already running
-  RUNNING=$(ssh $SSH_OPTS "root@$IP" "pgrep -f ingest_dropbox_volumes || true")
+  # Use pidof to avoid pgrep -f matching the SSH session itself
+  RUNNING=$(ssh $SSH_OPTS "root@$IP" "pidof -x ingest_dropbox_volumes.py || true")
   if [[ -n "$RUNNING" ]]; then
     echo "  SKIPPED: ingest already running (PID: $RUNNING)"
     continue

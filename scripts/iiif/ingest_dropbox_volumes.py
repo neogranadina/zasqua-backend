@@ -51,6 +51,12 @@ from iiif_tiling import (
 )
 
 
+def log(msg):
+    """Print a timestamped log message and flush immediately."""
+    ts = datetime.now(timezone.utc).strftime('%H:%M:%S')
+    print(f"[{ts}] {msg}", flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Per-repository attribution (matching generate_iiif_manifests.py)
 # ---------------------------------------------------------------------------
@@ -301,7 +307,7 @@ def process_volume(volume, config):
     errors = []
 
     if dry_run:
-        print(f"[DRY RUN] {slug}: {image_dir}")
+        log(f"[DRY RUN] {slug}: {image_dir}")
         return slug, 0, 0, []
 
     try:
@@ -309,7 +315,7 @@ def process_volume(volume, config):
         if not skip_pull:
             images_dir.mkdir(parents=True, exist_ok=True)
             remote_path = f"{dropbox_root}/{image_dir}/"
-            print(f"  Pulling {slug} from {remote_path}...")
+            log(f"  {slug}: pulling from Dropbox...")
             cmd = [
                 'rclone', 'copy',
                 remote_path,
@@ -321,6 +327,10 @@ def process_volume(volume, config):
                 errors.append(f"{slug}: rclone pull failed: {result.stderr}")
                 log_errors(errors_path, slug, errors)
                 return slug, 0, time.time() - start, errors
+            # Report what was pulled
+            pulled_files = list(images_dir.iterdir()) if images_dir.exists() else []
+            pull_elapsed = time.time() - start
+            log(f"  {slug}: pulled {len(pulled_files)} files in {pull_elapsed:.0f}s")
 
         # Step 2: Discover and sort image files
         if not images_dir.exists():
@@ -340,7 +350,8 @@ def process_volume(volume, config):
             log_errors(errors_path, slug, errors)
             return slug, 0, time.time() - start, errors
 
-        print(f"  {slug}: {len(image_files)} images found")
+        total_images = len(image_files)
+        log(f"  {slug}: {total_images} images to tile")
 
         # Step 3: Tile all images
         tiles_dir.mkdir(parents=True, exist_ok=True)
@@ -357,6 +368,10 @@ def process_volume(volume, config):
                 )
                 images_info.append(info)
                 image_count += 1
+
+                # Log progress every 50 images or on the last one
+                if image_count % 50 == 0 or image_count == total_images:
+                    log(f"  {slug}: tiled {image_count}/{total_images}")
 
             except Exception as e:
                 errors.append(f"{slug}/{image_path.name}: {e}")
@@ -376,11 +391,17 @@ def process_volume(volume, config):
             manifest_path.write_text(
                 json.dumps(manifest, indent=2, ensure_ascii=False)
             )
+            log(f"  {slug}: manifest written ({len(images_info)} canvases)")
 
         # Step 5: Upload to R2 (only when no errors)
         if not errors and not skip_upload and r2_remote and tiles_dir.exists():
-            print(f"  Uploading {slug}...")
+            # Count tiles for reporting
+            tile_count = sum(1 for _ in tiles_dir.rglob('*') if _.is_file())
+            log(f"  {slug}: uploading {tile_count} files to R2...")
+            upload_start = time.time()
             upload_to_r2(tiles_dir, r2_remote, slug)
+            upload_elapsed = time.time() - upload_start
+            log(f"  {slug}: upload done in {upload_elapsed:.0f}s")
 
         # Step 6: Clean up local files (only when successful — no errors)
         if not errors and not skip_upload:
@@ -388,6 +409,7 @@ def process_volume(volume, config):
                 shutil.rmtree(images_dir)
             if tiles_dir.exists():
                 shutil.rmtree(tiles_dir)
+            log(f"  {slug}: local files cleaned up")
 
         # Step 7: Log completion or errors
         if errors:
@@ -502,9 +524,9 @@ def main():
     args = parser.parse_args()
 
     # Load volume manifest
-    print(f"Loading manifest: {args.manifest}")
+    log(f"Loading manifest: {args.manifest}")
     volumes = load_manifest_csv(args.manifest)
-    print(f"  {len(volumes)} volumes found")
+    log(f"  {len(volumes)} volumes found")
 
     # Load progress for resume
     if not args.force:
@@ -512,25 +534,24 @@ def main():
         if completed:
             before = len(volumes)
             volumes = [v for v in volumes if v['slug'] not in completed]
-            print(f"  {before - len(volumes)} already completed, "
-                  f"{len(volumes)} remaining")
+            log(f"  {before - len(volumes)} already completed, "
+                f"{len(volumes)} remaining")
 
     # Apply limit
     if args.limit:
         volumes = volumes[:args.limit]
-        print(f"  Limited to {len(volumes)} volumes")
+        log(f"  Limited to {len(volumes)} volumes")
 
     if not volumes:
-        print("\nNothing to process.")
+        log("Nothing to process.")
         return
 
-    print(f"\nProcessing {len(volumes)} volumes")
-    print(f"Dropbox root: {args.dropbox_root}")
-    print(f"Work dir: {args.work_dir}")
-    print(f"Base URL: {args.base_url}")
-    print(f"R2 remote: {args.r2_remote}")
-    print(f"Workers: {args.workers}")
-    print()
+    log(f"Processing {len(volumes)} volumes")
+    log(f"Dropbox root: {args.dropbox_root}")
+    log(f"Work dir: {args.work_dir}")
+    log(f"Base URL: {args.base_url}")
+    log(f"R2 remote: {args.r2_remote}")
+    log(f"Workers: {args.workers}")
 
     # Build config
     config = {
@@ -556,6 +577,8 @@ def main():
     processed_count = 0
 
     for volume in volumes:
+        log(f"--- Volume {processed_count + 1}/{len(volumes)}: "
+            f"{volume['slug']} ---")
         slug, count, elapsed, errs = process_volume(volume, config)
         total_images += count
         total_errors.extend(errs)
@@ -563,25 +586,27 @@ def main():
 
         status = f"  {slug}: {count} images in {elapsed:.1f}s"
         if errs:
-            status += f" ({len(errs)} errors)"
+            status += f" — ERRORS: {len(errs)}"
+        else:
+            status += " — OK"
         status += f"  [{processed_count}/{len(volumes)}]"
-        print(status)
+        log(status)
 
         # Halt the entire run on rclone pull failure
         if any("rclone pull failed" in err for err in errs):
-            print(f"\nFATAL: rclone pull failed for {slug} — halting run.", file=sys.stderr)
+            log(f"FATAL: rclone pull failed for {slug} — halting run.")
             sys.exit(1)
 
     total_elapsed = time.time() - start_time
-    print(f"\nDone -- {total_images} images tiled across "
-          f"{processed_count} volumes in {total_elapsed:.1f}s")
+    log(f"Done -- {total_images} images tiled across "
+        f"{processed_count} volumes in {total_elapsed:.1f}s")
     if total_images > 0:
-        print(f"Average: {total_elapsed / total_images:.2f}s per image")
+        log(f"Average: {total_elapsed / total_images:.2f}s per image")
 
     if total_errors:
-        print(f"\n{len(total_errors)} errors:")
+        log(f"{len(total_errors)} errors:")
         for err in total_errors:
-            print(f"  {err}")
+            log(f"  {err}")
         sys.exit(1)
 
 

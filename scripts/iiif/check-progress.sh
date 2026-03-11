@@ -23,9 +23,18 @@ declare -A DROPLETS=(
   [nvl]=zasqua-nvl
 )
 
+declare -A EXPECTED=(
+  [aht]=113
+  [cabildos]=45
+  [n1]=168
+  [n2]=157
+  [nvl]=67
+)
+
 # Collect summary data
 declare -a SUMMARY_FOND=()
 declare -a SUMMARY_COMPLETED=()
+declare -a SUMMARY_EXPECTED=()
 declare -a SUMMARY_ERRORS=()
 declare -a SUMMARY_STATUS=()
 declare -a SUMMARY_DONE=()
@@ -38,18 +47,20 @@ for FOND in aht cabildos n1 n2 nvl; do
     echo "WARNING: Could not resolve IP for $DROPLET_NAME — skipping" >&2
     SUMMARY_FOND+=("$FOND")
     SUMMARY_COMPLETED+=("?")
+    SUMMARY_EXPECTED+=("${EXPECTED[$FOND]}")
     SUMMARY_ERRORS+=("?")
     SUMMARY_STATUS+=("UNREACHABLE")
     SUMMARY_DONE+=("?")
     continue
   fi
 
+  TOTAL_EXPECTED="${EXPECTED[$FOND]}"
   echo "── $DROPLET_NAME ($IP) ──────────────────────────────────────────────────────"
 
   # Completed volumes
   COMPLETED=$(ssh $SSH_OPTS "root@$IP" "wc -l < /root/zasqua/progress.log 2>/dev/null || echo 0" 2>/dev/null || echo 0)
   COMPLETED=$(echo "$COMPLETED" | tr -d '[:space:]')
-  echo "  Completed: $COMPLETED"
+  echo "  Completed: $COMPLETED/$TOTAL_EXPECTED"
 
   # Errors
   ERRORS=$(ssh $SSH_OPTS "root@$IP" "wc -l < /root/zasqua/errors.log 2>/dev/null || echo 0" 2>/dev/null || echo 0)
@@ -57,7 +68,7 @@ for FOND in aht cabildos n1 n2 nvl; do
   echo "  Errors: $ERRORS"
 
   # Running status
-  STATUS=$(ssh $SSH_OPTS "root@$IP" "pgrep -f ingest_dropbox_volumes > /dev/null 2>&1 && echo RUNNING || echo STOPPED" 2>/dev/null || echo UNKNOWN)
+  STATUS=$(ssh $SSH_OPTS "root@$IP" "pidof -x ingest_dropbox_volumes.py > /dev/null 2>&1 && echo RUNNING || echo STOPPED" 2>/dev/null || echo UNKNOWN)
   STATUS=$(echo "$STATUS" | tr -d '[:space:]')
   echo "  Status: $STATUS"
 
@@ -71,14 +82,20 @@ for FOND in aht cabildos n1 n2 nvl; do
   fi
   echo "  Done signal: $DONE_LABEL"
 
-  # Last 3 lines of tiling log
-  echo "  Last log lines:"
-  ssh $SSH_OPTS "root@$IP" "tail -3 /root/zasqua/tiling-${FOND}.log 2>/dev/null || echo '    (no log yet)'" 2>/dev/null | sed 's/^/    /'
+  # Current activity from tiling log
+  echo "  Last activity:"
+  ssh $SSH_OPTS "root@$IP" "tail -5 /root/zasqua/tiling-${FOND}.log 2>/dev/null || echo '    (no log yet)'" 2>/dev/null | sed 's/^/    /'
+
+  # Disk usage
+  DISK=$(ssh $SSH_OPTS "root@$IP" "du -sh /mnt/work 2>/dev/null | cut -f1 || echo '0'" 2>/dev/null || echo "?")
+  DISK=$(echo "$DISK" | tr -d '[:space:]')
+  echo "  Disk usage: $DISK"
 
   echo ""
 
   SUMMARY_FOND+=("$FOND")
   SUMMARY_COMPLETED+=("$COMPLETED")
+  SUMMARY_EXPECTED+=("$TOTAL_EXPECTED")
   SUMMARY_ERRORS+=("$ERRORS")
   SUMMARY_STATUS+=("$STATUS")
   SUMMARY_DONE+=("$DONE_LABEL")
@@ -86,14 +103,22 @@ done
 
 # Print summary table
 echo "── Summary ─────────────────────────────────────────────────────────────────"
-printf "%-12s %-10s %-8s %-10s %-6s\n" "Fond" "Completed" "Errors" "Status" "Done?"
-printf "%-12s %-10s %-8s %-10s %-6s\n" "------------" "----------" "--------" "----------" "------"
+printf "%-12s %-14s %-8s %-10s %-6s\n" "Fond" "Progress" "Errors" "Status" "Done?"
+printf "%-12s %-14s %-8s %-10s %-6s\n" "------------" "--------------" "--------" "----------" "------"
+TOTAL_COMPLETED=0
+TOTAL_EXPECTED=0
 for i in "${!SUMMARY_FOND[@]}"; do
-  printf "%-12s %-10s %-8s %-10s %-6s\n" \
+  PROGRESS_STR="${SUMMARY_COMPLETED[$i]}/${SUMMARY_EXPECTED[$i]}"
+  printf "%-12s %-14s %-8s %-10s %-6s\n" \
     "${SUMMARY_FOND[$i]}" \
-    "${SUMMARY_COMPLETED[$i]}" \
+    "$PROGRESS_STR" \
     "${SUMMARY_ERRORS[$i]}" \
     "${SUMMARY_STATUS[$i]}" \
     "${SUMMARY_DONE[$i]}"
+  if [[ "${SUMMARY_COMPLETED[$i]}" =~ ^[0-9]+$ ]]; then
+    TOTAL_COMPLETED=$((TOTAL_COMPLETED + SUMMARY_COMPLETED[$i]))
+  fi
+  TOTAL_EXPECTED=$((TOTAL_EXPECTED + SUMMARY_EXPECTED[$i]))
 done
+printf "%-12s %-14s\n" "TOTAL" "$TOTAL_COMPLETED/$TOTAL_EXPECTED"
 echo "────────────────────────────────────────────────────────────────────────────"
