@@ -68,7 +68,7 @@ for FOND in aht cabildos n1 n2 nvl; do
   echo "  Errors: $ERRORS"
 
   # Running status
-  STATUS=$(ssh $SSH_OPTS "root@$IP" "pidof -x ingest_dropbox_volumes.py > /dev/null 2>&1 && echo RUNNING || echo STOPPED" 2>/dev/null || echo UNKNOWN)
+  STATUS=$(ssh $SSH_OPTS "root@$IP" "pgrep -f 'python3.*ingest_dropbox' > /dev/null 2>&1 && echo RUNNING || echo STOPPED" 2>/dev/null || echo UNKNOWN)
   STATUS=$(echo "$STATUS" | tr -d '[:space:]')
   echo "  Status: $STATUS"
 

@@ -37,7 +37,7 @@ echo "  First volume: fond=$FOND volume=$VOLUME slug=$SLUG"
 echo ""
 
 # Guard: refuse to run if ingest is already running on the droplet
-RUNNING=$(ssh $SSH_OPTS "root@$IP" "pidof -x ingest_dropbox_volumes.py || true")
+RUNNING=$(ssh $SSH_OPTS "root@$IP" "pgrep -f 'python3.*ingest_dropbox' || true")
 if [[ -n "$RUNNING" ]]; then
   echo "ERROR: ingest_dropbox_volumes.py is already running on $DROPLET_NAME (PID: $RUNNING)" >&2
   echo "Kill it first or wait for it to finish." >&2
