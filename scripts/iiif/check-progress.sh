@@ -19,6 +19,7 @@ declare -A DROPLETS=(
   [aht]=zasqua-aht
   [cabildos]=zasqua-cabildos
   [n1]=zasqua-n1
+  [n1b]=zasqua-n1b
   [n2]=zasqua-n2
   [nvl]=zasqua-nvl
 )
@@ -26,7 +27,8 @@ declare -A DROPLETS=(
 declare -A EXPECTED=(
   [aht]=113
   [cabildos]=45
-  [n1]=168
+  [n1]=95
+  [n1b]=73
   [n2]=157
   [nvl]=67
 )
@@ -39,7 +41,7 @@ declare -a SUMMARY_ERRORS=()
 declare -a SUMMARY_STATUS=()
 declare -a SUMMARY_DONE=()
 
-for FOND in aht cabildos n1 n2 nvl; do
+for FOND in aht cabildos n1 n1b n2 nvl; do
   DROPLET_NAME="${DROPLETS[$FOND]}"
 
   IP=$(doctl compute droplet get "$DROPLET_NAME" --format PublicIPv4 --no-header 2>/dev/null || true)
