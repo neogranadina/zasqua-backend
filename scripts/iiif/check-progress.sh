@@ -41,7 +41,7 @@ declare -a SUMMARY_ERRORS=()
 declare -a SUMMARY_STATUS=()
 declare -a SUMMARY_DONE=()
 
-for FOND in aht cabildos n1 n1b n2 nvl; do
+for FOND in aht cabildos n1 n1b n2; do
   DROPLET_NAME="${DROPLETS[$FOND]}"
 
   IP=$(doctl compute droplet get "$DROPLET_NAME" --format PublicIPv4 --no-header 2>/dev/null || true)
