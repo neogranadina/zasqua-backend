@@ -33,10 +33,6 @@ export/
 
 # macOS
 .DS_Store
-
-# Planning
-.planning/
-
 # Coverage
 htmlcov/
 .coverage
